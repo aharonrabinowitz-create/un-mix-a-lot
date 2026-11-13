@@ -135,6 +135,13 @@ Section "Uninstall"
   Delete "$INSTDIR\settings.json"
   RMDir /r "$INSTDIR\logs"
   keep:
+  MessageBox MB_YESNO|MB_ICONQUESTION|MB_DEFBUTTON2 "Also remove your Hugging Face login and the downloaded SAM Audio model files (several GB)?$\r$\n$\r$\nChoose No if other programs on this computer use your Hugging Face login. If you choose Yes, you will need to sign in again to use SAM Audio." IDNO keephf
+  Delete "$PROFILE\.cache\huggingface\token"
+  Delete "$PROFILE\.huggingface\token"
+  RMDir /r "$PROFILE\.cache\huggingface\hub\models--facebook--sam-audio-small"
+  RMDir /r "$PROFILE\.cache\huggingface\hub\models--facebook--sam-audio-base"
+  RMDir /r "$PROFILE\.cache\huggingface\hub\models--facebook--sam-audio-large"
+  keephf:
   RMDir "$INSTDIR"
   Delete "$SMPROGRAMS\${APP}\${APP}.lnk"
   Delete "$SMPROGRAMS\${APP}\Uninstall ${APP}.lnk"
