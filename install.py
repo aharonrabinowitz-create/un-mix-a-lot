@@ -41,6 +41,19 @@ def is_intel_mac() -> bool:
     return sys.platform == "darwin" and platform.machine() == "x86_64"
 
 
+def _fix_xformers(cuda: str):
+    """SAM Audio pulls in xformers. The newest xformers needs a helper package (mslk) that has no Windows build,
+    so SAM would fail to load. On Windows use the last version that doesn't need it; on Linux add the helper."""
+    index = "https://download.pytorch.org/whl/" + cuda
+    try:
+        if sys.platform == "win32":
+            run(vpy(), "-m", "pip", "install", "xformers==0.0.35", "--no-deps", "--index-url", index)
+        elif sys.platform.startswith("linux"):
+            run(vpy(), "-m", "pip", "install", "-U", "mslk", "--index-url", index)
+    except subprocess.CalledProcessError:
+        print("\nCouldn't apply the xformers fix; SAM Audio may not start.")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--cuda", default="cu128", help="PyTorch CUDA wheel tag (cu128, cu126, ...)")
@@ -69,14 +82,22 @@ def main():
         run(vpy(), "-m", "pip", "install", "torch", "torchvision", "torchaudio")
     else:
         index = "https://download.pytorch.org/whl/" + ("cpu" if a.cpu else a.cuda)
-        run(vpy(), "-m", "pip", "install", "torch", "torchvision", "torchaudio", "--index-url", index)
+        # exact versions known to work together (newer ones can break SAM Audio's dependencies)
+        run(vpy(), "-m", "pip", "install", "torch==2.11.0", "torchvision==0.26.0", "torchaudio==2.11.0",
+            "--index-url", index)
     run(vpy(), "-m", "pip", "install", "-r", ROOT / "requirements.txt")
     sam = a.with_sam or not (a.no_sam or a.cpu or mac)
     sam_ok = False
     if sam:
         try:
             run(vpy(), "-m", "pip", "install", "-r", ROOT / "requirements-sam.txt")
-            sam_ok = True
+            _fix_xformers(a.cuda)
+            chk = subprocess.run([vpy(), "-c", "import sam_audio.model"], capture_output=True, text=True)
+            sam_ok = chk.returncode == 0
+            if not sam_ok:
+                print("\nSAM Audio installed but could not start:")
+                print(chk.stderr.strip().splitlines()[-1] if chk.stderr.strip() else "unknown error")
+                print("Everything else works. SAM Audio will stay hidden-or-failing until this is fixed.")
         except subprocess.CalledProcessError:
             print("\nSAM Audio could not be installed (it needs Git: https://git-scm.com). "
                   "Everything else works; run this installer again after installing Git if you want SAM.")
