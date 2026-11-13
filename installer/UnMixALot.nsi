@@ -89,6 +89,11 @@ Section "Install"
 SectionEnd
 
 Section "Uninstall"
+  DetailPrint "Removing program files (this takes a moment)..."
+  ; one fast delete per big folder; deleting file by file is very slow for the Python libraries
+  nsExec::Exec 'cmd /c rmdir /s /q "$INSTDIR\.venv"'
+  nsExec::Exec 'cmd /c rmdir /s /q "$INSTDIR\.tools"'
+  nsExec::Exec 'cmd /c rmdir /s /q "$INSTDIR\stemsplit"'
   RMDir /r "$INSTDIR\.venv"
   RMDir /r "$INSTDIR\.tools"
   RMDir /r "$INSTDIR\stemsplit"
