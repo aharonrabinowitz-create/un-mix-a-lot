@@ -1,0 +1,14 @@
+Use at your own risk
+
+Un-Mix-a-Lot is free software provided "as is", with no warranty of any kind. By downloading, installing or using it you agree to the following.
+
+- No responsibility. The author(s), contributors and anyone connected with this project are not responsible or liable for any damage, data loss, corrupted or lost files, system problems, lost time or money, or any other harm that results from downloading or using this software or its website.
+- It may not work. It may contain bugs, may crash, and may give poor results. Separation is never perfect, so expect artifacts and leftovers.
+- Keep backups. Always work on copies of your files. Never run it on the only copy of anything you care about.
+- Your content, your responsibility. You are responsible for owning or having permission to use any audio or video you process, and for how you use the results.
+- Third-party services and models. Cloud engines send your files to a third party. Models and services have their own licenses and terms, which you must follow. We don't control them and aren't responsible for them or any change to them.
+- Download at your own risk. Only download installers from the official GitHub links on the project page. Check that the address is correct before you run anything.
+- No support promised. Updates, fixes and support are offered when time allows, if at all.
+- Not affiliated. This project is not made, endorsed or sponsored by Meta, Hugging Face, MVSEP, or any other company named in it. All names are trademarks of their owners.
+
+TO THE MAXIMUM EXTENT PERMITTED BY LAW, THE SOFTWARE IS PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT WARRANTIES OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, AND NON-INFRINGEMENT. IN NO EVENT SHALL THE AUTHORS, COPYRIGHT HOLDERS OR CONTRIBUTORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR ITS USE.

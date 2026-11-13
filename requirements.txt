@@ -1,0 +1,8 @@
+gradio>=5.20,<6
+numpy
+scipy
+imageio-ffmpeg
+huggingface_hub
+speechbrain
+silero-vad
+pywebview>=5.3; sys_platform == "win32" or sys_platform == "darwin"

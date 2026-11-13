@@ -1,0 +1,2 @@
+# Only needed for the SAM Audio engine (NVIDIA GPU). install.py adds this automatically when it applies.
+sam-audio @ git+https://github.com/facebookresearch/sam-audio.git
