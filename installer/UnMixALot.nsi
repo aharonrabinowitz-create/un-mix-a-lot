@@ -49,10 +49,41 @@ Function LaunchApp
   Exec '"$INSTDIR\.venv\Scripts\pythonw.exe" "$INSTDIR\desktop.py"'
 FunctionEnd
 
+Function LogStart
+  FileOpen $1 "$INSTDIR\setup-log.txt" w
+  FileWrite $1 "Setup started. Program files copied and uninstaller registered.$\r$\n"
+  FileClose $1
+FunctionEnd
+
+Function LogResult
+  FileOpen $1 "$INSTDIR\setup-log.txt" a
+  FileSeek $1 0 END
+  FileWrite $1 "Library install finished with result: $0$\r$\n"
+  FileClose $1
+FunctionEnd
+
+Function LogDone
+  FileOpen $1 "$INSTDIR\setup-log.txt" a
+  FileSeek $1 0 END
+  FileWrite $1 "Setup completed: shortcuts created.$\r$\n"
+  FileClose $1
+FunctionEnd
+
 Section "Install"
   SetOutPath "$INSTDIR"
   DetailPrint "Copying program files ..."
   File /r "stage\*.*"
+  ; register the uninstaller now, so it exists even if the long step below is interrupted
+  WriteUninstaller "$INSTDIR\Uninstall.exe"
+  WriteRegStr HKCU "Software\${APP}" "InstallDir" "$INSTDIR"
+  WriteRegStr HKCU "${UNKEY}" "DisplayName" "${APP}"
+  WriteRegStr HKCU "${UNKEY}" "DisplayVersion" "${VERSION}"
+  WriteRegStr HKCU "${UNKEY}" "DisplayIcon" "$INSTDIR\icon.ico"
+  WriteRegStr HKCU "${UNKEY}" "InstallLocation" "$INSTDIR"
+  WriteRegStr HKCU "${UNKEY}" "UninstallString" '"$INSTDIR\Uninstall.exe"'
+  WriteRegDWORD HKCU "${UNKEY}" "NoModify" 1
+  WriteRegDWORD HKCU "${UNKEY}" "NoRepair" 1
+  Call LogStart
 
   DetailPrint "Downloading Python and the audio libraries. This is the slow part: please wait ..."
   System::Call 'kernel32::SetEnvironmentVariable(t "UNMIX_NOPAUSE", t "1")'
@@ -60,6 +91,7 @@ Section "Install"
   System::Call 'kernel32::SetEnvironmentVariable(t "PYTHONUTF8", t "1")'
   nsExec::ExecToLog '"$SYSDIR\cmd.exe" /c ""$INSTDIR\Install ${APP}.bat""'
   Pop $0
+  Call LogResult
   ${If} $0 != "0"
     MessageBox MB_OK|MB_ICONSTOP "Setup could not finish installing the audio libraries (code $0).$\r$\n$\r$\nCheck your internet connection and run setup again. The details above show what went wrong."
     Abort
@@ -76,16 +108,8 @@ Section "Install"
   CreateShortcut "$SMPROGRAMS\${APP}\Uninstall ${APP}.lnk" "$INSTDIR\Uninstall.exe"
   CreateShortcut "$DESKTOP\${APP}.lnk" "$INSTDIR\.venv\Scripts\pythonw.exe" '"$INSTDIR\desktop.py"' "$INSTDIR\icon.ico" 0
 
-  WriteUninstaller "$INSTDIR\Uninstall.exe"
-  WriteRegStr HKCU "Software\${APP}" "InstallDir" "$INSTDIR"
-  WriteRegStr HKCU "${UNKEY}" "DisplayName" "${APP}"
-  WriteRegStr HKCU "${UNKEY}" "DisplayVersion" "${VERSION}"
-  WriteRegStr HKCU "${UNKEY}" "DisplayIcon" "$INSTDIR\icon.ico"
-  WriteRegStr HKCU "${UNKEY}" "InstallLocation" "$INSTDIR"
-  WriteRegStr HKCU "${UNKEY}" "UninstallString" '"$INSTDIR\Uninstall.exe"'
-  WriteRegDWORD HKCU "${UNKEY}" "NoModify" 1
-  WriteRegDWORD HKCU "${UNKEY}" "NoRepair" 1
   DetailPrint "Done."
+  Call LogDone
 SectionEnd
 
 Section "Uninstall"
@@ -105,6 +129,7 @@ Section "Uninstall"
   Delete "$INSTDIR\LICENSE"
   Delete "$INSTDIR\DISCLAIMER.txt"
   Delete "$INSTDIR\splash.html"
+  Delete "$INSTDIR\setup-log.txt"
   Delete "$INSTDIR\Uninstall.exe"
   MessageBox MB_YESNO|MB_ICONQUESTION "Also delete your settings (including any MVSEP token) and logs?$\r$\n$\r$\nYour exported audio in Documents is never touched." IDNO keep
   Delete "$INSTDIR\settings.json"
