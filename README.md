@@ -34,7 +34,7 @@ The MVSEP token is stored in `settings.json` next to the app. That file is ignor
 
 For each chunk the app runs SAM Audio as a cascade over residuals: `"speech"` gives Voices, `"music"` on the leftovers gives Music, and by default everything left is called Effects (untick "Effects = leftovers" to run an explicit effects pass; then the remainder becomes Other). Chunks are overlap-added with crossfades, and the last stem is computed as the original minus the others, so **voices + music + effects + other equals the original exactly**.
 
-> **Status:** the chunking, stem maths, mixer, effects, voice splitting, export and UI are tested end to end. The real SAM Audio path follows the repo's documented API but has **not** been run against the real weights yet. See [First run checklist](#first-run-checklist).
+> **Status:** the chunking, stem maths, mixer, effects, voice splitting, export and UI are tested end to end. SAM Audio (local) has been run on one NVIDIA RTX GPU on Windows; other setups are untested. See [First run checklist](#first-run-checklist).
 
 ## Install
 
@@ -42,8 +42,8 @@ You don't need to install Python or anything else first. The installer fetches i
 
 **Mac (Apple chip or Intel):**
 
-1. Download or clone this project into a permanent folder, for example `Documents/Un-Mix-a-Lot`.
-2. Double-click **`Install Un-Mix-a-Lot`**. The first time, macOS may block it: right-click the file, choose **Open**, then **Open** again. If it says you don't have the right privileges, open Terminal and run `cd ~/Documents/GitHub/Stem_Split && chmod +x "Install Un-Mix-a-Lot.command"` (adjust the folder to where you put the project), then try again.
+1. Download **`Un-Mix-a-Lot-Mac.zip`** from the project's [Releases page](https://github.com/aharonrabinowitz-create/un-mix-a-lot/releases/latest) and unzip it into a permanent folder, for example `Documents/Un-Mix-a-Lot`.
+2. Double-click **`Install Un-Mix-a-Lot`**. The first time, macOS may block it: right-click the file, choose **Open**, then **Open** again. If it says you don't have the right privileges, open Terminal and run `cd ~/Documents/Un-Mix-a-Lot && chmod +x "Install Un-Mix-a-Lot.command"` (adjust the folder to where you put the project), then try again.
 3. Wait 5 to 15 minutes. When it finishes, there is an **`Un-Mix-a-Lot`** app in the folder. Double-click it, or drag it to the Dock or Applications.
 
 What works on a Mac: BandIt v2 (Local, on the CPU), the cloud engines (MVSEP), voice splitting, the mixer, effects and export. SAM Audio is hidden because it needs an NVIDIA GPU. Intel Macs work but are slower and use older libraries (the installer handles this). If you move the project folder, run `.venv/bin/python mac_app.py` once to refresh the app.
@@ -57,7 +57,7 @@ To rebuild the Setup.exe yourself: `installer/build.sh` (needs NSIS, `sudo apt i
 **Linux, or if you prefer the command line:** Python 3.11+, then
 
 ```bash
-git clone <this repo> && cd Stem_Split
+git clone https://github.com/aharonrabinowitz-create/un-mix-a-lot.git && cd un-mix-a-lot
 python install.py          # creates .venv, installs PyTorch + dependencies (add --cpu if you have no NVIDIA GPU)
 python run.py              # then open http://127.0.0.1:7860
 ```
