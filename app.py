@@ -820,26 +820,27 @@ def on_mcp_setup():
                            creationflags=audio.NOWIN)
         except Exception as e:
             gr.Warning("Couldn't install the connection library. Check your internet and try again.")
-            return gr.skip(), _msg("err", f"Couldn't install the 'mcp' library: {e}")
+            return gr.skip(), gr.skip(), _msg("err", f"Couldn't install the 'mcp' library: {e}")
     cmd, script = _mcp_command()
     text = json.dumps({"mcpServers": {"un-mix-a-lot": {"command": cmd, "args": [script]}}}, indent=2)
-    return text, _msg("ok", "Ready. Copy the text below, then follow the steps above it.")
+    codex = f"[mcp_servers.un-mix-a-lot]\ncommand = '{cmd}'\nargs = ['{script}']\n"  # single quotes: Windows backslashes stay literal
+    return text, codex, _msg("ok", "Ready. Copy the text below, then follow the steps above it.")
 
 
 def on_mcp_connect(go=False):
     if not go:
-        return gr.skip(), gr.skip()
+        return gr.skip(), gr.skip(), gr.skip()
     cmd, script = _mcp_command()
-    text, msg = on_mcp_setup()  # makes sure the library is installed; gives the paste-in text
+    text, codex, msg = on_mcp_setup()  # makes sure the library is installed; gives the paste-in text
     if not isinstance(text, str):
-        return text, msg
+        return text, codex, msg
     ok, note = claude_config.connect(cmd, script)
     if ok:
         gr.Info("Connected to Claude Desktop.")
     else:
         gr.Warning("Automatic setup didn't work, and that's okay. Just do it the copy-and-paste way: "
                    "copy the text in the box below and paste it into Claude Desktop (Settings, Developer, Edit Config).", duration=None)
-    return text, _msg("ok" if ok else "info", note)
+    return text, codex, _msg("ok" if ok else "info", note)
 
 
 def on_mcp_disconnect(go=False):
@@ -1127,19 +1128,25 @@ def build() -> gr.Blocks:
                         with gr.Tab("MCP"):
                             gr.HTML('<div class="sec">MCP: let Claude use Un-Mix-a-Lot (optional)</div>'
                                     '<div style="font-size:12px;opacity:.65;line-height:1.55">'
-                                    'MCP lets Claude Desktop run this app for you, on your own PC. Then you can just ask, and Claude '
-                                    'does the clicking.<br><b>Setup</b><br>'
+                                    'MCP lets an AI app run Un-Mix-a-Lot for you, on your own PC. Then you can just ask, and it does the clicking. '
+                                    'Works with Claude Desktop, the ChatGPT desktop app, Codex and other apps that support MCP.<br><b>Setup for Claude Desktop</b><br>'
                                     '1. Press "Connect to Claude Desktop" below.<br>'
                                     '2. Quit Claude Desktop completely and open it again.<br>'
                                     '3. Start a new chat and ask for something, like the examples below.<br>'
                                     'Didn\'t work? Press "Show the text to paste" and paste it into Claude Desktop: Settings, Developer, '
-                                    'Edit Config, then restart it.</div>')
+                                    'Edit Config, then restart it.<br><b>Setup for Codex or the ChatGPT desktop app</b><br>'
+                                    'Press "Show the text to paste", copy the Codex box, and add it to the file '
+                                    '.codex/config.toml in your user folder (or in Codex: Settings, MCP servers, Add server, STDIO, '
+                                    'and enter the command and file shown). Restart the app. The one-click button is for Claude Desktop only. '
+                                    'ChatGPT in a web browser can\'t reach programs on your PC.</div>')
                             mcp_go = gr.Checkbox(False, visible=False)
                             b_mcp_on = gr.Button("Connect to Claude Desktop", size="sm", variant="primary")
                             b_mcp_off = gr.Button("Disconnect", size="sm")
                             b_mcp = gr.Button("Show the text to paste", size="sm")
-                            mcp_text = gr.Textbox(label="Paste this into Claude Desktop", lines=8, max_lines=8, interactive=False,
-                                                  show_copy_button=True)
+                            mcp_text = gr.Textbox(label="For Claude Desktop (and most MCP apps)", lines=8, max_lines=8,
+                                                  interactive=False, show_copy_button=True)
+                            codex_text = gr.Textbox(label="For Codex / ChatGPT desktop (add to .codex/config.toml)", lines=3, max_lines=3,
+                                                    interactive=False, show_copy_button=True)
                             gr.HTML('<div class="sec">Things you can ask Claude</div>'
                                     '<div style="font-size:12px;opacity:.65;line-height:1.6">'
                                     '&bull; "Remove the music from <i>Solara_Confrontation</i> and save the video to my Desktop."<br>'
@@ -1149,7 +1156,7 @@ def build() -> gr.Blocks:
                                     '&bull; "Save the voices, music and effects as separate files."<br><br>'
                                     'Good to know: your original files are never changed or deleted. Finished files go where you say, '
                                     'or into Documents/Un-Mix-a-Lot/From Claude. Everything Claude makes also shows up in History here, '
-                                    'so you can listen and check. Claude can\'t hear audio, so give it a listen yourself.</div>')
+                                    'so you can listen and check. The AI can\'t hear audio, so give it a listen yourself.</div>')
 
         # ---------------- history pop-up
         with gr.Column(elem_id="history-modal"):
@@ -1242,13 +1249,13 @@ def build() -> gr.Blocks:
             auto_upd.change(on_auto_update_setting, auto_upd, None, show_progress="hidden")
             demo.load(on_auto_update_check, None, [upd_html, b_upd_get, upd_flag], show_progress="hidden").then(
                 None, upd_flag, None, js=_DOT_JS)
-            b_mcp.click(on_mcp_setup, None, [mcp_text, set_msg], show_progress="hidden")
+            b_mcp.click(on_mcp_setup, None, [mcp_text, codex_text, set_msg], show_progress="hidden")
             _CONNECT_JS = ("() => [confirm('You are about to edit a file: Claude Desktop\\'s settings file.\\n\\n"
                            "This adds one entry so Claude can use Un-Mix-a-Lot. Nothing else in the file is changed, "
                            "and a dated backup copy is saved first.\\n\\nContinue?')]")
             _DISCONNECT_JS = ("() => [confirm('You are about to edit Claude Desktop\\'s settings file.\\n\\n"
                               "This removes only the Un-Mix-a-Lot entry. Your other settings are not touched.\\n\\nContinue?')]")
-            b_mcp_on.click(on_mcp_connect, mcp_go, [mcp_text, set_msg], show_progress="hidden", js=_CONNECT_JS)
+            b_mcp_on.click(on_mcp_connect, mcp_go, [mcp_text, codex_text, set_msg], show_progress="hidden", js=_CONNECT_JS)
             b_mcp_off.click(on_mcp_disconnect, mcp_go, set_msg, show_progress="hidden", js=_DISCONNECT_JS)
             keep_hist.change(on_history_settings, [keep_hist, hist_dir], set_msg, show_progress="hidden")
             hist_dir.submit(on_history_settings, [keep_hist, hist_dir], set_msg, show_progress="hidden")

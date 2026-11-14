@@ -86,24 +86,32 @@ The first separation downloads the weights (several GB) and is slow; after that 
 
 If you hit an out-of-memory error, try a smaller model, Fast mode, or turn off *Predict time spans* / reranking under *Advanced*. Community reports put the small model around 21 GB VRAM, which is tight on some cards; I haven't measured it on yours. `STEMSPLIT_DTYPE=bfloat16` is an experimental option to cut memory (not verified to preserve quality).
 
-## Use it from Claude (MCP, optional)
+## Use it from an AI app (MCP, optional)
 
-MCP lets Claude Desktop run Un-Mix-a-Lot for you, on your own PC. You ask in plain words, for example
-"remove the music from my video and save it to my Desktop", or "take every video in my Scenes folder and
-remove the music".
+MCP lets an AI app run Un-Mix-a-Lot for you, on your own PC. It works with Claude Desktop, the ChatGPT desktop app, Codex and other
+apps that support MCP. You ask in plain words, for example "remove the music from my video and save it to my
+Desktop", or "take every video in my Scenes folder and remove the music".
 
-Setup: open **Settings, MCP tab** in the app and press **Connect to Claude Desktop**, then quit Claude Desktop
-completely and open it again. If the button can't do it, press **Show the text to paste** and paste that text
-into Claude Desktop (Settings, Developer, Edit Config). **Disconnect** in the same tab removes it again.
+**Claude Desktop:** open **Settings, MCP tab** in the app and press **Connect to Claude Desktop**, then quit
+Claude Desktop completely and open it again. If the button can't do it, press **Show the text to paste** and paste
+the first box into Claude Desktop (Settings, Developer, Edit Config). **Disconnect** in the same tab removes it.
 
-What Claude can do: find audio and video files by name, split a file into voices, music and effects, split
-voices into separate speakers (with corrections), mute or turn down any track, and save the result as audio or
-as the original video with new audio. Your original files are never changed or deleted, and an existing file is
-never replaced (a number is added to the name). Everything Claude makes also appears in the app's History.
-Claude can't hear audio, so listen to the result yourself.
+**Codex and the ChatGPT desktop app** (they share one MCP setup): press **Show the text to paste**, copy the Codex box,
+and add it to `.codex/config.toml` in your user folder (or in the app: Settings, MCP servers, Add server, STDIO, with
+the command and file shown). Restart the app. The one-click button is for Claude Desktop only. ChatGPT in a web
+browser can't reach programs on your PC.
 
-Everything runs locally on your computer. Claude Desktop asks before it uses a tool, unless you tell it to
-always allow.
+**Any other MCP app:** run `python run_mcp.py` from the app's `.venv` (the text in the MCP tab shows the exact
+paths). It speaks standard MCP over stdio.
+
+What the AI can do: find audio and video files by name, split a file into voices, music and effects, split
+voices into separate speakers (with corrections), mute or turn down any track, and save the result as audio or as
+the original video with new audio. Your original files are never changed or deleted, and an existing file is
+never replaced (a number is added to the name). Everything it makes also appears in the app's History. The AI
+can't hear audio, so listen to the result yourself.
+
+Everything runs locally on your computer. These apps ask before they use a tool, unless you tell
+them to always allow.
 
 ## Configuration
 
