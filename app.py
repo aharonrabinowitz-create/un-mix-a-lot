@@ -30,7 +30,7 @@ from urllib.parse import quote
 
 import gradio as gr
 
-from stemsplit import audio, claude_config, cinematic, fx as fxmod, hardware, hfaccess, mvsep, pipeline, voices
+from stemsplit import __version__, audio, claude_config, cinematic, fx as fxmod, hardware, hfaccess, mvsep, pipeline, updates, voices
 from stemsplit.fxjs import FX_JS
 from stemsplit.mixer import MIXER_CSS, MIXER_HTML, MIXER_JS
 from stemsplit.separator import MODEL_IDS, get_separator
@@ -849,6 +849,59 @@ def on_mcp_disconnect(go=False):
     return _msg("ok" if ok else "err", note)
 
 
+def _update_html(res: dict | None = None) -> str:
+    base = f"You have version {__version__}."
+    if res is None:
+        return f'<div style="font-size:12px;opacity:.65">{base}</div>'
+    if res["state"] == "new":
+        return (f'<div style="font-size:13px"><b>Version {html.escape(res["version"])} is available.</b> {base} '
+                f'Download the new installer and run it, the same way you installed this one.</div>')
+    if res["state"] == "current":
+        return f'<div style="font-size:12px;opacity:.75">{base} You have the latest version.</div>'
+    return '<div style="font-size:12px;opacity:.75">Couldn\'t reach GitHub to check. Check your internet and try again.</div>'
+
+
+_UPD: dict = {"url": updates.PAGE}
+
+
+def _flag(res: dict) -> str:
+    return "1" if res["state"] == "new" else ""
+
+
+def on_check_updates(auto=False):
+    res = updates.check()
+    _UPD["url"] = res["url"]
+    set_setting("last_update_check", str(int(time.time())))
+    if res["state"] == "new":
+        gr.Info(f"Version {res['version']} is available. See Settings.") if not auto else None
+    elif not auto:
+        gr.Info("You have the latest version." if res["state"] == "current" else "Couldn't reach GitHub.")
+    return _update_html(res), gr.update(visible=res["state"] == "new"), _flag(res)
+
+
+def on_auto_update_check():
+    """Page load: at most once a day, and only if the user left automatic checks on."""
+    if get_setting("auto_update", "1") != "1":
+        return gr.skip(), gr.skip(), ""
+    try:
+        if time.time() - float(get_setting("last_update_check", "0")) < 86400:
+            return gr.skip(), gr.skip(), ""
+    except ValueError:
+        pass
+    return on_check_updates(auto=True)
+
+
+def on_auto_update_setting(on):
+    set_setting("auto_update", "1" if on else "0")
+
+
+def on_open_update():
+    try:
+        webbrowser.open(_UPD["url"])
+    except Exception:
+        pass
+
+
 def on_sam_check():
     res = {k: hfaccess.check(k) for k in hfaccess.SIZES}
     ok = [k for k, v in res.items() if v == "ok"]
@@ -912,6 +965,8 @@ EYE_JS = r"""(function(){
 })();"""
 
 APP_CSS = MIXER_CSS + """
+#b-settings{position:relative}
+#b-settings.has-update::after{content:"";position:absolute;top:3px;right:3px;width:9px;height:9px;border-radius:50%;background:#f97316;box-shadow:0 0 0 2px rgba(0,0,0,.35)}
 footer{display:none !important}
 .gradio-container{max-width:none !important;padding:10px 14px !important}
 #left,#right{gap:8px !important}
@@ -987,7 +1042,7 @@ def build() -> gr.Blocks:
                 with gr.Row(elem_id="expbtns"):
                     b_stems = gr.Button("Export stems", min_width=100)
                 with gr.Row():
-                    b_set = gr.Button("Settings", size="sm", min_width=80)
+                    b_set = gr.Button("Settings", size="sm", min_width=80, elem_id="b-settings")
                     b_hist = gr.Button("History", size="sm", min_width=80, visible=not ZERO)
                 with gr.Row():
                     b_reset = gr.Button("Reset controls", size="sm", min_width=80)
@@ -1012,6 +1067,14 @@ def build() -> gr.Blocks:
                             keep_hist = gr.Checkbox(keep_history(), label="Keep history (saves each result so you can reopen it)")
                             hist_dir = gr.Textbox(str(history_dir()), label="History folder", lines=1, max_lines=1)
                             b_hist_dir = gr.Button("Choose folder…", size="sm", visible=DESKTOP)
+                        if not ZERO:
+                            gr.HTML('<div class="sec">Updates</div>')
+                            upd_html = gr.HTML(_update_html())
+                            upd_flag = gr.Textbox("", visible=False)
+                            b_upd_get = gr.Button("Download the new version", size="sm", variant="primary", visible=False)
+                            b_upd = gr.Button("Check for updates", size="sm")
+                            auto_upd = gr.Checkbox(get_setting("auto_update", "1") == "1",
+                                                   label="Check automatically (once a day, contacts GitHub)")
                         gr.HTML('<div class="sec">Use at your own risk</div>'
                                 '<div style="font-size:12px;opacity:.65">Un-Mix-a-Lot is free software provided "as is", with no warranty. '
                                 'Always work on copies of your files. The author(s) are not responsible for lost or damaged files or other harm. '
@@ -1171,6 +1234,14 @@ def build() -> gr.Blocks:
             b_samtok.click(on_sam_tokenpage, None, set_msg, show_progress="hidden")
             b_samsave.click(on_sam_save, hf_tok, [hf_tok, sam_state, set_msg], show_progress="hidden")
             b_samchk.click(on_sam_check, None, [sam_state, set_msg], show_progress="hidden")
+            _DOT_JS = ("(f) => { const b = document.getElementById('b-settings'); "
+                       "if (b) b.classList.toggle('has-update', !!f); }")
+            b_upd.click(on_check_updates, None, [upd_html, b_upd_get, upd_flag], show_progress="hidden").then(
+                None, upd_flag, None, js=_DOT_JS)
+            b_upd_get.click(on_open_update, None, None, show_progress="hidden")
+            auto_upd.change(on_auto_update_setting, auto_upd, None, show_progress="hidden")
+            demo.load(on_auto_update_check, None, [upd_html, b_upd_get, upd_flag], show_progress="hidden").then(
+                None, upd_flag, None, js=_DOT_JS)
             b_mcp.click(on_mcp_setup, None, [mcp_text, set_msg], show_progress="hidden")
             _CONNECT_JS = ("() => [confirm('You are about to edit a file: Claude Desktop\\'s settings file.\\n\\n"
                            "This adds one entry so Claude can use Un-Mix-a-Lot. Nothing else in the file is changed, "

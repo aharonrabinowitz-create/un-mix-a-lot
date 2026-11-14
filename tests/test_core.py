@@ -464,3 +464,16 @@ def test_claude_config(tmp_path, monkeypatch):
     ok, msg = cc.connect("py", "run_mcp.py")
     assert not ok and cfg.read_text() == "{ this is not json"  # left alone
     assert not cc.disconnect()[0] and cfg.read_text() == "{ this is not json"
+
+
+def test_updates(monkeypatch):
+    from stemsplit import updates
+
+    assert updates.is_newer("1.2.0", "1.1.0") and updates.is_newer("2.0", "1.9.9") and updates.is_newer("1.1.1", "1.1")
+    assert not updates.is_newer("1.1.0", "1.1.0") and not updates.is_newer("1.0.9", "1.1.0")
+    monkeypatch.setenv("STEMSPLIT_MOCK_UPDATE", "9.9.9")
+    assert updates.check()["state"] == "new"
+    monkeypatch.setenv("STEMSPLIT_MOCK_UPDATE", "0.0.1")
+    assert updates.check()["state"] == "current"
+    monkeypatch.setenv("STEMSPLIT_MOCK_UPDATE", "offline")
+    assert updates.check()["state"] == "offline"
