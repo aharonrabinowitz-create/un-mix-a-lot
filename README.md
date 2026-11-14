@@ -86,6 +86,8 @@ The first separation downloads the weights (several GB) and is slow; after that 
 
 If you hit an out-of-memory error, try a smaller model, Fast mode, or turn off *Predict time spans* / reranking under *Advanced*. Community reports put the small model around 21 GB VRAM, which is tight on some cards; I haven't measured it on yours. `STEMSPLIT_DTYPE=bfloat16` is an experimental option to cut memory (not verified to preserve quality).
 
+<a id="mcp"></a>
+
 ## Use it from an AI app (MCP, optional)
 
 MCP lets an AI app run Un-Mix-a-Lot for you, on your own PC. It works with Claude Desktop, the ChatGPT desktop app, Codex and other
