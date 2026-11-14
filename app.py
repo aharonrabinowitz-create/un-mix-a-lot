@@ -30,7 +30,7 @@ from urllib.parse import quote
 
 import gradio as gr
 
-from stemsplit import audio, cinematic, fx as fxmod, hardware, hfaccess, mvsep, pipeline, voices
+from stemsplit import audio, claude_config, cinematic, fx as fxmod, hardware, hfaccess, mvsep, pipeline, voices
 from stemsplit.fxjs import FX_JS
 from stemsplit.mixer import MIXER_CSS, MIXER_HTML, MIXER_JS
 from stemsplit.separator import MODEL_IDS, get_separator
@@ -800,6 +800,55 @@ def on_sam_save(tok):
     return "", _sam_state(), _msg("ok", "Token saved on this PC. Now press step 3 to check your access.")
 
 
+def _mcp_command() -> tuple[str, str]:
+    """The Python and launcher file Claude should start. (pythonw has no console, so use python.exe for stdio.)"""
+    py = Path(sys.executable)
+    if py.name.lower() == "pythonw.exe":
+        py = py.with_name("python.exe")
+    return str(py), str(Path(__file__).resolve().parent / "run_mcp.py")
+
+
+def on_mcp_setup():
+    """Make sure the MCP library is installed, then show the text to paste into Claude Desktop."""
+    try:
+        import mcp  # noqa: F401
+    except ImportError:
+        try:
+            subprocess.run([sys.executable if Path(sys.executable).name.lower() != "pythonw.exe"
+                            else str(Path(sys.executable).with_name("python.exe")),
+                            "-m", "pip", "install", "mcp>=1.2,<2"], check=True, capture_output=True,
+                           creationflags=audio.NOWIN)
+        except Exception as e:
+            gr.Warning("Couldn't install the connection library. Check your internet and try again.")
+            return gr.skip(), _msg("err", f"Couldn't install the 'mcp' library: {e}")
+    cmd, script = _mcp_command()
+    text = json.dumps({"mcpServers": {"un-mix-a-lot": {"command": cmd, "args": [script]}}}, indent=2)
+    return text, _msg("ok", "Ready. Copy the text below, then follow the steps above it.")
+
+
+def on_mcp_connect(go=False):
+    if not go:
+        return gr.skip(), gr.skip()
+    cmd, script = _mcp_command()
+    text, msg = on_mcp_setup()  # makes sure the library is installed; gives the paste-in text
+    if not isinstance(text, str):
+        return text, msg
+    ok, note = claude_config.connect(cmd, script)
+    if ok:
+        gr.Info("Connected to Claude Desktop.")
+    else:
+        gr.Warning("Automatic setup didn't work, and that's okay. Just do it the copy-and-paste way: "
+                   "copy the text in the box below and paste it into Claude Desktop (Settings, Developer, Edit Config).", duration=None)
+    return text, _msg("ok" if ok else "info", note)
+
+
+def on_mcp_disconnect(go=False):
+    if not go:
+        return gr.skip()
+    ok, note = claude_config.disconnect()
+    return _msg("ok" if ok else "err", note)
+
+
 def on_sam_check():
     res = {k: hfaccess.check(k) for k in hfaccess.SIZES}
     ok = [k for k, v in res.items() if v == "ok"]
@@ -1011,6 +1060,33 @@ def build() -> gr.Blocks:
                         with gr.Column(visible=ENGINES[0] == ENGINE_LOCAL) as grp_none:
                             gr.HTML('<div style="font-size:13px;opacity:.75;padding:8px 2px">This engine has no settings. '
                                     'It runs on its own once you press Separate.</div>')
+                    if not ZERO:
+                        with gr.Tab("MCP"):
+                            gr.HTML('<div class="sec">MCP: let Claude use Un-Mix-a-Lot (optional)</div>'
+                                    '<div style="font-size:12px;opacity:.65;line-height:1.55">'
+                                    'MCP lets Claude Desktop run this app for you, on your own PC. Then you can just ask, and Claude '
+                                    'does the clicking.<br><b>Setup</b><br>'
+                                    '1. Press "Connect to Claude Desktop" below.<br>'
+                                    '2. Quit Claude Desktop completely and open it again.<br>'
+                                    '3. Start a new chat and ask for something, like the examples below.<br>'
+                                    'Didn\'t work? Press "Show the text to paste" and paste it into Claude Desktop: Settings, Developer, '
+                                    'Edit Config, then restart it.</div>')
+                            mcp_go = gr.Checkbox(False, visible=False)
+                            b_mcp_on = gr.Button("Connect to Claude Desktop", size="sm", variant="primary")
+                            b_mcp_off = gr.Button("Disconnect", size="sm")
+                            b_mcp = gr.Button("Show the text to paste", size="sm")
+                            mcp_text = gr.Textbox(label="Paste this into Claude Desktop", lines=8, max_lines=8, interactive=False,
+                                                  show_copy_button=True)
+                            gr.HTML('<div class="sec">Things you can ask Claude</div>'
+                                    '<div style="font-size:12px;opacity:.65;line-height:1.6">'
+                                    '&bull; "Remove the music from <i>Solara_Confrontation</i> and save the video to my Desktop."<br>'
+                                    '&bull; "Take every video in my Scenes folder and remove the music."<br>'
+                                    '&bull; "Split the voices in that clip into 3 speakers, then give me just voice 2."<br>'
+                                    '&bull; "Lower the music to 30% and keep everything else."<br>'
+                                    '&bull; "Save the voices, music and effects as separate files."<br><br>'
+                                    'Good to know: your original files are never changed or deleted. Finished files go where you say, '
+                                    'or into Documents/Un-Mix-a-Lot/From Claude. Everything Claude makes also shows up in History here, '
+                                    'so you can listen and check. Claude can\'t hear audio, so give it a listen yourself.</div>')
 
         # ---------------- history pop-up
         with gr.Column(elem_id="history-modal"):
@@ -1095,6 +1171,14 @@ def build() -> gr.Blocks:
             b_samtok.click(on_sam_tokenpage, None, set_msg, show_progress="hidden")
             b_samsave.click(on_sam_save, hf_tok, [hf_tok, sam_state, set_msg], show_progress="hidden")
             b_samchk.click(on_sam_check, None, [sam_state, set_msg], show_progress="hidden")
+            b_mcp.click(on_mcp_setup, None, [mcp_text, set_msg], show_progress="hidden")
+            _CONNECT_JS = ("() => [confirm('You are about to edit a file: Claude Desktop\\'s settings file.\\n\\n"
+                           "This adds one entry so Claude can use Un-Mix-a-Lot. Nothing else in the file is changed, "
+                           "and a dated backup copy is saved first.\\n\\nContinue?')]")
+            _DISCONNECT_JS = ("() => [confirm('You are about to edit Claude Desktop\\'s settings file.\\n\\n"
+                              "This removes only the Un-Mix-a-Lot entry. Your other settings are not touched.\\n\\nContinue?')]")
+            b_mcp_on.click(on_mcp_connect, mcp_go, [mcp_text, set_msg], show_progress="hidden", js=_CONNECT_JS)
+            b_mcp_off.click(on_mcp_disconnect, mcp_go, set_msg, show_progress="hidden", js=_DISCONNECT_JS)
             keep_hist.change(on_history_settings, [keep_hist, hist_dir], set_msg, show_progress="hidden")
             hist_dir.submit(on_history_settings, [keep_hist, hist_dir], set_msg, show_progress="hidden")
             b_hist_dir.click(on_choose_history_folder, None, [hist_dir, set_msg], show_progress="hidden")

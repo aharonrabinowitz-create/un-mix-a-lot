@@ -5,7 +5,7 @@ set -e
 cd "$(dirname "$0")/.."
 OUT="$(mkdir -p "${1:-dist}" && cd "${1:-dist}" && pwd)"
 rm -rf installer/stage && mkdir -p installer/stage
-cp app.py desktop.py install.py run.py requirements.txt requirements-sam.txt icon.ico LICENSE README.md DISCLAIMER.txt splash.html installer/stage/
+cp app.py desktop.py install.py run.py run_mcp.py requirements.txt requirements-sam.txt icon.ico LICENSE README.md DISCLAIMER.txt splash.html installer/stage/
 cp "Install Un-Mix-a-Lot.bat" "Un-Mix-a-Lot.bat" "Un-Mix-a-Lot (browser).bat" installer/stage/
 mkdir installer/stage/stemsplit
 (cd stemsplit && find . -name '*.py' -o -name 'LICENSE' | grep -v __pycache__ | while read f; do mkdir -p "../installer/stage/stemsplit/$(dirname "$f")"; cp "$f" "../installer/stage/stemsplit/$f"; done)

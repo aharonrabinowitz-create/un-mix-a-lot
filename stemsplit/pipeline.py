@@ -205,21 +205,37 @@ def apply_fx(stems: dict[str, np.ndarray], fxs: dict | None) -> dict[str, np.nda
     return out
 
 
+def unique_path(p: Path) -> Path:
+    """p, or 'name (2).ext', 'name (3).ext'... so an existing file is never replaced."""
+    if not p.exists():
+        return p
+    i = 2
+    while p.with_name(f"{p.stem} ({i}){p.suffix}").exists():
+        i += 1
+    return p.with_name(f"{p.stem} ({i}){p.suffix}")
+
+
 def export(session_dir: Path, gains: dict[str, float], fmt: str, *, as_video: bool,
-           out_dir: Path, fx: dict | None = None) -> Path:
-    """Mix with the given gains and write a file (audio, or the source video re-muxed)."""
+           out_dir: Path, fx: dict | None = None, unique: bool = False) -> Path:
+    """Mix with the given gains and write a file (audio, or the source video re-muxed).
+
+    unique=True never replaces an existing file: it picks 'name (2).ext' instead."""
+    import tempfile
+
     manifest = json.loads((session_dir / "manifest.json").read_text())
     stems = apply_fx(load_stems(session_dir), fx)
     out_dir.mkdir(parents=True, exist_ok=True)
     base = Path(manifest["source_name"]).stem or "mix"
     ext, cargs = audio.resolve_quality(fmt)
-    audio_path = audio.write_audio(out_dir / f"{base}_mix.{ext}", mix(stems, gains), codec_args=cargs)
-    if as_video:
-        if not (manifest.get("source_video") and Path(manifest["source_video"]).exists()):
-            raise FileNotFoundError("The original video for this result is no longer available.")
-        src = Path(manifest["source_video"])
-        return audio.remux_video(src, audio_path, out_dir / f"{base}_mix{src.suffix or '.mp4'}")
-    return audio_path
+    pick = unique_path if unique else (lambda q: q)
+    if not as_video:
+        return audio.write_audio(pick(out_dir / f"{base}_mix.{ext}"), mix(stems, gains), codec_args=cargs)
+    if not (manifest.get("source_video") and Path(manifest["source_video"]).exists()):
+        raise FileNotFoundError("The original video for this result is no longer available.")
+    src = Path(manifest["source_video"])
+    with tempfile.TemporaryDirectory() as td:  # the lossless mix is only a stepping stone, so keep it out of the user's folder
+        audio_path = audio.write_audio(Path(td) / f"{base}_mix.{ext}", mix(stems, gains), codec_args=cargs)
+        return audio.remux_video(src, audio_path, pick(out_dir / f"{base}_mix{src.suffix or '.mp4'}"))
 
 
 def export_stems_zip(session_dir: Path, out_dir: Path, fmt: str = "wav", fx: dict | None = None) -> tuple[Path, list[Path]]:

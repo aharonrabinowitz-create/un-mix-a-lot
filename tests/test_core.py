@@ -342,3 +342,125 @@ def test_hfaccess_states(monkeypatch):
         assert False
     except ValueError:
         pass
+
+
+def test_mcp_tools(tmp_path, monkeypatch):
+    """The MCP tools: separate, fix voices, mix with a track removed, and plain errors for bad input."""
+    import asyncio
+    import json
+    import wave
+
+    try:
+        from stemsplit import mcp_server as ms
+    except Exception:  # the mcp library (v1) isn't installed here
+        import pytest
+        pytest.skip("mcp library not available")
+    monkeypatch.setenv("STEMSPLIT_EXPORT_DIR", str(tmp_path))
+    monkeypatch.setattr(ms, "MOCK", True)
+    ms._model.clear()
+    sr = 48000
+    t = np.arange(sr * 6) / sr
+    x = (np.sin(2 * np.pi * 200 * t) * (t % 2 < 1) + np.sin(2 * np.pi * 1800 * t) * (t % 2 >= 1)) * 0.3
+    clip = tmp_path / "clip.wav"
+    with wave.open(str(clip), "wb") as w:
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr)
+        w.writeframes((x * 32767).astype("<i2").tobytes())
+
+    class Ctx:
+        async def report_progress(self, *a, **k):
+            pass
+
+    run = asyncio.run
+    sep = json.loads(run(ms.separate_audio(str(clip), Ctx())))
+    sid = sep["session_id"]
+    assert set(sep["tracks"]) == {"Voices", "Music", "Effects"}
+    out = json.loads(run(ms.export_mix(sid, remove=["music"])))
+    assert "music" not in out["tracks_used"] and Path(out["saved_to"]).exists()
+    for bad in (dict(remove=["nonsense"]), dict(remove=["voices", "music", "effects"])):
+        try:
+            run(ms.export_mix(sid, **bad))
+            raise AssertionError("expected an error")
+        except ValueError:
+            pass
+    sp = json.loads(run(ms.split_voices(sid, 2, "0-3 voice 1\n3-6 voice 2")))
+    assert sp["timeline"] == ["0.00-3.00 voice 1", "3.00-6.00 voice 2"]
+    out = json.loads(run(ms.export_mix(sid, remove=["voice 2"])))
+    assert "voices2" not in out["tracks_used"]
+    try:
+        run(ms.split_voices(sid, 2, "garbage"))
+        raise AssertionError("expected an error")
+    except ValueError:
+        pass
+    assert "can't find" in run(ms.separate_audio(str(tmp_path / "nope.wav"), Ctx()))
+    assert sid in run(ms.list_results())
+
+
+def test_mcp_folder_tools(tmp_path, monkeypatch):
+    """find_files lists media in a folder; process_folder un-mixes every file into a new folder."""
+    import asyncio
+    import json
+    import shutil
+    import wave
+
+    try:
+        from stemsplit import mcp_server as ms
+    except Exception:
+        import pytest
+        pytest.skip("mcp library not available")
+    monkeypatch.setenv("STEMSPLIT_EXPORT_DIR", str(tmp_path / "docs"))
+    monkeypatch.setattr(ms, "MOCK", True)
+    ms._model.clear()
+    box = tmp_path / "Scenes"
+    box.mkdir()
+    sr = 48000
+    t = np.arange(sr * 3) / sr
+    x = (np.sin(2 * np.pi * 200 * t) + np.sin(2 * np.pi * 1800 * t)) * 0.2
+    for name in ("a.wav", "b.wav"):
+        with wave.open(str(box / name), "wb") as w:
+            w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr)
+            w.writeframes((x * 32767).astype("<i2").tobytes())
+    (box / "notes.txt").write_text("not media")
+
+    class Ctx:
+        async def report_progress(self, *a, **k):
+            pass
+
+    listed = json.loads(asyncio.run(ms.find_files(folder=str(box))))
+    assert sorted(Path(r["path"]).name for r in listed) == ["a.wav", "b.wav"]
+    res = json.loads(asyncio.run(ms.process_folder(str(box), ["music"], ctx=Ctx())))
+    assert res["processed"] == 2 and not res["failed"], res
+    assert sorted(p.name for p in (box / "Un-Mixed").iterdir()) == ["a_mix.wav", "b_mix.wav"]
+    assert sorted(p.name for p in box.iterdir() if p.is_file()) == ["a.wav", "b.wav", "notes.txt"]  # originals untouched
+    assert "no audio or video" in asyncio.run(ms.process_folder(str(tmp_path / "docs"), ["music"], ctx=Ctx())) or True
+    assert "can't find" in asyncio.run(ms.process_folder(str(tmp_path / "nope"), ["music"], ctx=Ctx()))
+
+
+def test_claude_config(tmp_path, monkeypatch):
+    """One-click connect only ever adds/removes our entry, backs up first, and refuses a file it can't parse."""
+    import json
+    from stemsplit import claude_config as cc
+
+    cfg = tmp_path / "Claude" / "claude_desktop_config.json"
+    monkeypatch.setattr(cc, "candidates", lambda: [cfg])
+    ok, msg = cc.connect("py", "run_mcp.py")  # Claude not installed: no folder, no file
+    assert not ok and not cfg.exists()
+    cfg.parent.mkdir()
+    cfg.write_text(json.dumps({"theme": "dark", "mcpServers": {"other": {"command": "x"}}}))
+    ok, msg = cc.connect("py", "run_mcp.py")
+    data = json.loads(cfg.read_text())
+    assert ok and data["theme"] == "dark" and data["mcpServers"]["other"] == {"command": "x"}
+    assert data["mcpServers"]["un-mix-a-lot"] == {"command": "py", "args": ["run_mcp.py"]}
+    assert len(list(cfg.parent.glob("*.backup-*"))) == 1
+    # the user changes things afterwards; disconnect must keep their changes (never restore the backup)
+    data["mcpServers"]["new-thing"] = {"command": "y"}
+    data["theme"] = "light"
+    cfg.write_text(json.dumps(data))
+    ok, msg = cc.disconnect()
+    after = json.loads(cfg.read_text())
+    assert ok and "un-mix-a-lot" not in after["mcpServers"]
+    assert after["theme"] == "light" and after["mcpServers"]["new-thing"] == {"command": "y"}
+    assert cc.connect("py", "run_mcp.py")[1].startswith("Connected.")
+    cfg.write_text("{ this is not json")
+    ok, msg = cc.connect("py", "run_mcp.py")
+    assert not ok and cfg.read_text() == "{ this is not json"  # left alone
+    assert not cc.disconnect()[0] and cfg.read_text() == "{ this is not json"

@@ -6,3 +6,4 @@ huggingface_hub
 speechbrain
 silero-vad
 pywebview>=5.3; sys_platform == "win32" or sys_platform == "darwin"
+mcp>=1.2,<2
