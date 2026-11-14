@@ -86,6 +86,16 @@ The first separation downloads the weights (several GB) and is slow; after that 
 
 If you hit an out-of-memory error, try a smaller model, Fast mode, or turn off *Predict time spans* / reranking under *Advanced*. Community reports put the small model around 21 GB VRAM, which is tight on some cards; I haven't measured it on yours. `STEMSPLIT_DTYPE=bfloat16` is an experimental option to cut memory (not verified to preserve quality).
 
+## Seeing a security warning on first install? That's expected
+
+Un-Mix-a-Lot is free and new, and the installers are not code-signed (code-signing certificates cost money). Windows and macOS therefore show a warning the first time. The code is open source, so you can read all of it here.
+
+**Windows:** if you see a blue "Windows protected your PC" screen, click **More info**, then **Run anyway**.
+
+**Mac:** if macOS says it can't verify the app, right-click (or Control-click) the installer, choose **Open**, then click **Open** again. If it still blocks you, go to **System Settings → Privacy & Security** and click **Open Anyway**. (The exact wording varies between macOS versions.)
+
+**Your privacy:** your audio stays on your computer unless you choose the MVSEP cloud option. The app also checks GitHub once a day for updates; you can turn that off in Settings.
+
 <a id="mcp"></a>
 
 ## Use it from an AI app (MCP, optional)
