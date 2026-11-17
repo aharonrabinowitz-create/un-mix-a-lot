@@ -67,7 +67,7 @@ python run.py              # then open http://127.0.0.1:7860
 
 ### Updating
 
-The app checks for a new version every time it starts. When one is available, an orange dot appears. On Windows, open the update notice and click **Update now**: a progress window shows the download and install, and the app reopens when it finishes. You can also check by hand from the same place. On Mac, download the newest `Un-Mix-a-Lot-Mac.zip` from the Releases page and replace the old folder. Your settings and History are kept when you update on Windows.
+The app checks for a new version every time it starts. When one is available, an orange dot appears. On Windows, open the update notice and click **Update now**: a progress window shows the download and install, and the app reopens when it finishes. You can also check by hand from the same place. On Mac, download the newest `Un-Mix-a-Lot-Mac.zip` from the Releases page and replace the old folder. Your files and settings are kept when you update on Windows.
 
 ### Get access to the weights (Hugging Face)
 
