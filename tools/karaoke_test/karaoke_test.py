@@ -8,7 +8,26 @@ Usage: python karaoke_test.py "C:\\path\\song.mp3"
 """
 import sys, time, os
 import torch
-from audio_separator.separator import Separator
+import subprocess
+
+# audio-separator's install leaves some small dependencies out. Install any that are missing, one by one.
+_PKG = {"yaml": "pyyaml", "sklearn": "scikit-learn", "cv2": "opencv-python"}
+for _ in range(25):
+    try:
+        from audio_separator.separator import Separator
+        break
+    except ModuleNotFoundError as e:
+        name = (e.name or "").split(".")[0]
+        if not name:
+            raise
+        pkg = _PKG.get(name, name)
+        print(f"Installing missing piece: {pkg}")
+        uv = os.environ.get("UV", "uv")
+        r = subprocess.run([uv, "pip", "install", "--python", sys.executable, pkg])
+        if r.returncode != 0:
+            raise
+else:
+    raise SystemExit("Too many missing pieces; send this screen to Claude.")
 
 MODELS = [
     ("karaoke", "mel_band_roformer_karaoke_aufr33_viperx_sdr_10.1956.ckpt"),
