@@ -360,17 +360,20 @@ def _entries() -> list[dict]:
 
 def _hist_view():
     es = _entries()
-    choices = []
+    rows = []
     for e in es:
         when = time.strftime("%b %d, %I:%M %p", time.localtime(e["created"])).replace(" 0", " ")
-        label = f'{e["name"]} · {e["engine"]} · {when} · {e["dur"]:.0f} s · {e["mb"]:.0f} MB' + ("" if e["saved"] else " · not saved")
-        choices.append((label, e["sid"]))
+        meta = f'{e["engine"]} · {when} · {e["dur"]:.0f} s · {e["mb"]:.0f} MB' + ("" if e["saved"] else " · not saved")
+        rows.append(f'<div class="hrow" data-sid="{e["sid"]}"><b>{html.escape(str(e["name"]))}</b>'
+                    f'<span class="hm">{html.escape(meta)}</span></div>')
+    choices = rows
     saved = [e for e in es if e["saved"]]
     info = (f'{len(saved)} saved result(s), {sum(e["mb"] for e in saved):.0f} MB in {history_dir()}'
             if choices else "No results yet. Run a separation and it will show up here.")
     if keep_history() is False and not ZERO:
         info += " History is off, so new results are not saved."
-    return gr.update(choices=choices, value=None), info
+    listing = ('<div id="hist-box">' + "".join(rows) + "</div>") if rows else ""
+    return listing, info
 
 
 def on_hist_refresh():
@@ -378,8 +381,11 @@ def on_hist_refresh():
 
 
 def on_hist_open(cid, sel):
+    sel = (sel or "").strip()
     if not sel:
         _fail(cid, "Pick a result in the list first.")
+    if "," in sel:
+        _fail(cid, "Pick just one result to open.")
     sd = _find_session(sel)
     if sd is None:
         _fail(cid, "That result can't be found any more.")
@@ -391,11 +397,33 @@ def on_hist_open(cid, sel):
     return payload, sel, gr.update(visible=has_video)
 
 
-def on_hist_delete(cid, sel):
-    if sel:
-        for root in (WORK / sel, *history_dir().glob(f"*-{sel}")):
+def _delete_result(sid: str):
+    if HEX.fullmatch(sid or ""):
+        for root in (WORK / sid, *history_dir().glob(f"*-{sid}")):
             shutil.rmtree(root, ignore_errors=True)
-        gr.Info("Deleted.")
+
+
+def on_hist_delete(cid, sels):
+    """Delete the picked results (several can be picked, as a comma-separated list)."""
+    ids = [x for x in (sels or "").split(",") if x]
+    for sid in ids:
+        _delete_result(sid)
+    if ids:
+        gr.Info("Deleted." if len(ids) == 1 else f"Deleted {len(ids)} results.")
+    return _hist_view()
+
+
+def on_hist_delete_all(cid, flag, current):
+    """Delete everything in History. The result that is open in the mixer stays, so exporting keeps working."""
+    if flag != "all":
+        return _hist_view()
+    n = 0
+    for e in _entries():
+        if e["sid"] == (current or ""):
+            continue
+        _delete_result(e["sid"])
+        n += 1
+    gr.Info(f"Deleted {n} result(s)." + (" The one that is open was kept." if current and _find_session(current) else ""))
     return _hist_view()
 
 
@@ -1165,10 +1193,14 @@ def build() -> gr.Blocks:
                     gr.HTML('<b style="font-size:16px">History</b>')
                     b_hclose = gr.Button("Close", size="sm", scale=0, min_width=70)
                 hist_info = gr.HTML("")
-                hist_list = gr.Radio([], label="Past results (newest first)")
+                gr.HTML('<div class="sm-empty" style="margin:2px 0 4px">Newest first. Click to pick one, Ctrl+click to add, Shift+click for a range. '
+                        'Press Delete to remove the picked ones. Double-click opens one.</div>')
+                hist_list = gr.HTML("", elem_id="hist-list")
+                hsel_box = gr.Textbox(visible=False)
                 with gr.Row():
-                    b_hopen = gr.Button("Open", variant="primary", size="sm")
-                    b_hdel = gr.Button("Delete", size="sm")
+                    b_hopen = gr.Button("Open", variant="primary", size="sm", elem_id="hist-open")
+                    b_hdel = gr.Button("Delete", size="sm", elem_id="hist-del")
+                    b_hall = gr.Button("Delete all", size="sm", elem_id="hist-delall")
 
         # hidden controls that the mixer's own buttons click (Split voices, and edits to the voice strip)
         n_box = gr.Textbox(visible=False)
@@ -1222,10 +1254,15 @@ def build() -> gr.Blocks:
         b_hist.click(on_hist_refresh, None, [hist_list, hist_info], show_progress="hidden",
                      js="() => { document.getElementById('history-modal').classList.add('open'); }")
         b_hclose.click(None, None, None, js="() => document.getElementById('history-modal').classList.remove('open')")
-        b_hopen.click(on_hist_open, [cid, hist_list], [manifest, sid, b_video], show_progress="hidden"
-                      ).success(None, [manifest], None, js=LOAD_JS)
-        b_hdel.click(on_hist_delete, [cid, hist_list], [hist_list, hist_info], show_progress="hidden",
-                     js="(c, s) => (s && confirm('Delete this saved result? This cannot be undone.')) ? [c, s] : [c, null]")
+        b_hopen.click(on_hist_open, [cid, hsel_box], [manifest, sid, b_video], show_progress="hidden",
+                      js="(c, s) => [c, window.somaMixer.histSel().join(',')]").success(None, [manifest], None, js=LOAD_JS)
+        b_hdel.click(on_hist_delete, [cid, hsel_box], [hist_list, hist_info], show_progress="hidden",
+                     js="""(c, s) => { const a = window.somaMixer.histSel(); if (!a.length) return [c, null];
+                       return confirm(a.length > 1 ? 'Delete these ' + a.length + ' saved results? This cannot be undone.'
+                                                    : 'Delete this saved result? This cannot be undone.') ? [c, a.join(',')] : [c, null]; }""")
+        b_hall.click(on_hist_delete_all, [cid, hsel_box, sid], [hist_list, hist_info], show_progress="hidden",
+                     js="""(c, x, s) => { const n = document.querySelectorAll('#hist-list .hrow').length;
+                       return (n && confirm('Delete ALL ' + n + ' results in History? This cannot be undone. (The one open in the mixer is kept.)')) ? [c, 'all', s] : [c, null, s]; }""")
 
         # --- which controls show depends on the engine
         def _vis(e):

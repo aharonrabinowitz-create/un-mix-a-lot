@@ -12,10 +12,11 @@ Un-Mix-a-Lot is free software provided **"as is", with no warranty of any kind**
 
 - **Split** a file into voices, music and effects. Pick an engine: BandIt v2 (local, runs on a regular computer), cloud engines on mvsep.com, or Meta's SAM Audio (local, needs a strong NVIDIA GPU).
 - **Mixer:** mute, solo and volume for every track, waveforms, click to seek, a level meter, and a synced video preview. Space plays and pauses.
-- **Split voices:** turn the Voices track into one track per speaker (2 to 4). A "Who is talking" strip shows who speaks when; click a block to reassign it, drag a line to move it. The pieces always add back up to the original voices track.
+- **Split voices:** turn the Voices track into one track per speaker (2 to 4). A "Who is talking" strip shows who speaks when; click a block to reassign it, drag a line to move it, or click a line and nudge it with the arrow keys (0.01 s per press, Shift for 0.1 s). The pieces always add back up to the original voices track.
 - **Effects on every track:** EQ, Filter, Ring modulator, Chorus, Distortion, Delay, Reverb and Noise, each with its own on/off switch, plus friendly presets (Robot Voice, Radio, Space Helmet, Telephone, Cave, Underwater, and more). You hear changes live; your original audio is never changed. Effects are applied when you export.
 - **Export** the current mix (WAV, FLAC or MP3), the individual stems, or the original video with the new mix put back in (the video stream is copied, not re-encoded).
-- **History** keeps past results so you can reopen them, and **Settings** holds your options and keys.
+- **Zoom and undo:** zoom the timeline (Ctrl + mouse wheel, or the + / - / Fit buttons) for precise voice edits, and undo or redo your voice edits and mixer changes with Ctrl+Z / Ctrl+Shift+Z (Cmd on a Mac).
+- **History** keeps past results so you can reopen them. Pick one or many (Ctrl+click, Shift+click), press Delete to remove them, or use Delete all. **Settings** holds your options and keys.
 - **Automatic hardware check:** the app only offers engines your computer can run.
 - Long files are handled in chunks with crossfades. Everything is mono 48 kHz.
 
