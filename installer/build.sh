@@ -12,6 +12,7 @@ mkdir installer/stage/stemsplit
 # Windows batch files must use CRLF line endings
 for f in installer/stage/*.bat; do sed -i 's/\r$//; s/$/\r/' "$f"; done
 cd installer
-makensis -V2 -DOUTFILE="$OUT/Un-Mix-a-Lot-Setup.exe" UnMixALot.nsi
+VER=$(grep -oE '__version__ = "[^"]+"' ../stemsplit/__init__.py | cut -d'"' -f2)
+makensis -V2 -DVERSION="$VER" -DOUTFILE="$OUT/Un-Mix-a-Lot-Setup.exe" UnMixALot.nsi
 rm -rf stage
 ls -la "$OUT/Un-Mix-a-Lot-Setup.exe"

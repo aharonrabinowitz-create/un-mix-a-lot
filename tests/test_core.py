@@ -477,3 +477,33 @@ def test_updates(monkeypatch):
     assert updates.check()["state"] == "current"
     monkeypatch.setenv("STEMSPLIT_MOCK_UPDATE", "offline")
     assert updates.check()["state"] == "offline"
+
+
+def test_self_update_helpers(monkeypatch, tmp_path):
+    from stemsplit import updates
+    monkeypatch.delenv("STEMSPLIT_FAKE_INSTALL", raising=False)
+    assert updates.install_dir() is None or sys.platform == "win32"      # a dev checkout is never "installed"
+    monkeypatch.setenv("STEMSPLIT_FAKE_INSTALL", str(tmp_path))
+    assert updates.can_self_update() and updates.install_dir() == tmp_path
+    cmd = updates.installer_command(Path("C:/Temp/x y/Setup.exe"), Path("C:/Users/a b/Un-Mix-a-Lot"))
+    assert cmd.startswith('"') and "/D=" in cmd
+    assert "/UPDATE" in cmd and cmd.rstrip().rsplit(" /D=", 1)[1]       # /D= is last, unquoted
+
+
+def test_download_rejects_bad_file(monkeypatch, tmp_path):
+    from stemsplit import updates
+    bad = tmp_path / "not_an_installer.exe"
+    bad.write_bytes(b"<html>404</html>" * 10000)
+    monkeypatch.setenv("STEMSPLIT_UPDATE_URL", bad.as_uri())
+    with pytest.raises(RuntimeError):
+        updates.download_installer()
+    tiny = tmp_path / "tiny.exe"
+    tiny.write_bytes(b"MZ" + b"0" * 100)
+    monkeypatch.setenv("STEMSPLIT_UPDATE_URL", tiny.as_uri())
+    with pytest.raises(RuntimeError):
+        updates.download_installer()
+    good = tmp_path / "good.exe"
+    good.write_bytes(b"MZ" + b"0" * 200_000)
+    monkeypatch.setenv("STEMSPLIT_UPDATE_URL", good.as_uri())
+    p = updates.download_installer()
+    assert p.is_file() and p.stat().st_size == 200_002

@@ -4,9 +4,15 @@
 Unicode True
 !include "MUI2.nsh"
 !include "LogicLib.nsh"
+!include "FileFunc.nsh"
+!insertmacro GetOptions
+
+Var IsUpdate   ; 1 when the app started setup with /UPDATE (the in-app "Update now" button)
 
 !define APP "Un-Mix-a-Lot"
-!define VERSION "1.0"
+!ifndef VERSION
+  !define VERSION "1.0"   ; build.sh passes the real version from stemsplit/__init__.py
+!endif
 !define UNKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\${APP}"
 
 Name "${APP}"
@@ -17,7 +23,7 @@ RequestExecutionLevel user
 SetCompressor /SOLID lzma
 BrandingText "${APP} ${VERSION}"
 
-VIProductVersion "1.0.0.0"
+VIProductVersion "${VERSION}.0"
 VIAddVersionKey "ProductName" "${APP}"
 VIAddVersionKey "FileDescription" "${APP} setup"
 VIAddVersionKey "FileVersion" "${VERSION}"
@@ -35,18 +41,58 @@ VIAddVersionKey "LegalCopyright" "Free to use"
 
 !define MUI_LICENSEPAGE_CHECKBOX
 !define MUI_LICENSEPAGE_CHECKBOX_TEXT "I understand and accept this notice"
+; An update (/UPDATE) skips the welcome, license, folder and finish pages and shows only the progress page.
+!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfUpdate
 !insertmacro MUI_PAGE_WELCOME
+!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfUpdate
 !insertmacro MUI_PAGE_LICENSE "stage\DISCLAIMER.txt"
+!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfUpdate
 !insertmacro MUI_PAGE_DIRECTORY
+!define MUI_PAGE_CUSTOMFUNCTION_PRE UpdateHeader
 !insertmacro MUI_PAGE_INSTFILES
+!define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfUpdate
 !insertmacro MUI_PAGE_FINISH
 !insertmacro MUI_UNPAGE_CONFIRM
 !insertmacro MUI_UNPAGE_INSTFILES
 !insertmacro MUI_LANGUAGE "English"
 
+Function .onInit
+  StrCpy $IsUpdate 0
+  ClearErrors
+  ${GetOptions} $CMDLINE "/UPDATE" $0
+  ${IfNot} ${Errors}
+    StrCpy $IsUpdate 1
+    SetAutoClose true
+  ${EndIf}
+FunctionEnd
+
+Function SkipIfUpdate
+  ${If} $IsUpdate == 1
+    Abort
+  ${EndIf}
+FunctionEnd
+
+Function UpdateHeader
+  ${If} $IsUpdate == 1
+    !insertmacro MUI_HEADER_TEXT "Updating ${APP}" "Please wait. ${APP} will close, then open again by itself when this is done (about a minute or two). Your files and settings are kept."
+  ${EndIf}
+FunctionEnd
+
 Function LaunchApp
   SetOutPath "$INSTDIR"
   Exec '"$INSTDIR\.venv\Scripts\pythonw.exe" "$INSTDIR\desktop.py"'
+FunctionEnd
+
+; An update (or a silent run) has no finish page, so open the app again here.
+Function .onInstSuccess
+  ${If} $IsUpdate == 1
+    SetOutPath "$INSTDIR"
+    Exec '"$INSTDIR\.venv\Scripts\pythonw.exe" "$INSTDIR\desktop.py"'
+  ${Else}
+    IfSilent 0 +3
+    SetOutPath "$INSTDIR"
+    Exec '"$INSTDIR\.venv\Scripts\pythonw.exe" "$INSTDIR\desktop.py"'
+  ${EndIf}
 FunctionEnd
 
 Function LogStart
@@ -88,7 +134,11 @@ Section "Install"
   WriteRegDWORD HKCU "${UNKEY}" "NoRepair" 1
   Call LogStart
 
-  DetailPrint "Downloading Python and the audio libraries. This is the slow part: please wait ..."
+  ${If} $IsUpdate == 1
+    DetailPrint "Updating. Checking the audio libraries (already installed, so this is quick) ..."
+  ${Else}
+    DetailPrint "Downloading Python and the audio libraries. This is the slow part: please wait ..."
+  ${EndIf}
   System::Call 'kernel32::SetEnvironmentVariable(t "UNMIX_NOPAUSE", t "1")'
   System::Call 'kernel32::SetEnvironmentVariable(t "PIP_PROGRESS_BAR", t "off")'
   System::Call 'kernel32::SetEnvironmentVariable(t "PYTHONUTF8", t "1")'

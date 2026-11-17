@@ -1,10 +1,17 @@
-"""Check GitHub for a newer Un-Mix-a-Lot release. Only ever tells the user; never installs anything."""
+"""Check GitHub for a newer Un-Mix-a-Lot release, and (Windows installed copy only) update in place.
+
+Checking only ever tells the user. Updating happens only when the user clicks "Update now": it downloads the small
+setup file from the latest GitHub release and runs it silently over the existing install."""
 from __future__ import annotations
 
 import json
 import os
 import re
+import subprocess
+import sys
+import tempfile
 import urllib.request
+from pathlib import Path
 
 from . import __version__
 
@@ -44,3 +51,63 @@ def check() -> dict:
         return {"state": "offline", "version": "", "url": PAGE}
     v, url = got
     return {"state": "new" if is_newer(v) else "current", "version": v, "url": url}
+
+
+# ----------------------------------------------------------------------------- in-place update (Windows installed copy)
+INSTALLER_URL = f"https://github.com/{REPO}/releases/latest/download/Un-Mix-a-Lot-Setup.exe"
+APP_DIR = Path(__file__).resolve().parent.parent
+
+
+def install_dir() -> Path | None:
+    """The folder of an installed copy (made by Un-Mix-a-Lot-Setup.exe), else None (dev copy, Mac, Linux)."""
+    fake = os.environ.get("STEMSPLIT_FAKE_INSTALL")  # tests only
+    if fake:
+        return Path(fake)
+    if sys.platform == "win32" and (APP_DIR / "Uninstall.exe").is_file() and (APP_DIR / ".venv").is_dir():
+        return APP_DIR
+    return None
+
+
+def can_self_update() -> bool:
+    return install_dir() is not None
+
+
+def download_installer(url: str | None = None, timeout: float = 60.0) -> Path:
+    """Download the setup file to a temp folder and sanity-check it. Raises RuntimeError with a plain message."""
+    url = url or os.environ.get("STEMSPLIT_UPDATE_URL") or INSTALLER_URL
+    dest = Path(tempfile.mkdtemp(prefix="unmix-update-")) / "Un-Mix-a-Lot-Setup.exe"
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": "Un-Mix-a-Lot"})
+        with urllib.request.urlopen(req, timeout=timeout) as r, open(dest, "wb") as f:
+            while True:
+                chunk = r.read(1 << 16)
+                if not chunk:
+                    break
+                f.write(chunk)
+    except Exception as e:
+        raise RuntimeError(f"Couldn't download the update ({e}). Check your internet and try again.") from e
+    size = dest.stat().st_size
+    with open(dest, "rb") as f:
+        head = f.read(2)
+    if size < 100_000 or head != b"MZ":
+        raise RuntimeError("The downloaded update doesn't look right, so it was not run. Nothing was changed.")
+    return dest
+
+
+def installer_command(setup: Path, target: Path) -> str:
+    """Update over the existing folder: shows only a progress window. /D= must be last and must not be quoted."""
+    return f'"{setup}" /UPDATE /D={target}'
+
+
+def run_installer(setup: Path, target: Path) -> str:
+    """Start the setup file detached from this process, so it can close the app and replace its files."""
+    cmd = installer_command(setup, target)
+    dry = os.environ.get("STEMSPLIT_UPDATE_DRYRUN")  # tests only: record the command instead of running it
+    if dry:
+        Path(dry).write_text(cmd, encoding="utf-8")
+        return cmd
+    flags = 0
+    if sys.platform == "win32":
+        flags = subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP
+    subprocess.Popen(cmd, creationflags=flags, close_fds=True)
+    return cmd

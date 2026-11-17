@@ -883,8 +883,9 @@ def _update_html(res: dict | None = None) -> str:
     if res is None:
         return f'<div style="font-size:12px;opacity:.65">{base}</div>'
     if res["state"] == "new":
-        return (f'<div style="font-size:13px"><b>Version {html.escape(res["version"])} is available.</b> {base} '
-                f'Download the new installer and run it, the same way you installed this one.</div>')
+        how = ("Click <b>Update now</b>: the app closes, updates in a minute or two, and opens again." if updates.can_self_update()
+               else "Download the new installer and run it, the same way you installed this one.")
+        return (f'<div style="font-size:13px"><b>Version {html.escape(res["version"])} is available.</b> {base} {how}</div>')
     if res["state"] == "current":
         return f'<div style="font-size:12px;opacity:.75">{base} You have the latest version.</div>'
     return '<div style="font-size:12px;opacity:.75">Couldn\'t reach GitHub to check. Check your internet and try again.</div>'
@@ -897,10 +898,12 @@ def _flag(res: dict) -> str:
     return "1" if res["state"] == "new" else ""
 
 
-def on_check_updates(auto=False):
-    res = updates.check()
+def on_check_updates(auto=False, res=None):
+    res = res or updates.check()
     _UPD["url"] = res["url"]
     set_setting("last_update_check", str(int(time.time())))
+    if res["state"] in ("new", "current"):
+        set_setting("latest_known", res["version"] if res["state"] == "new" else "")
     if res["state"] == "new":
         gr.Info(f"Version {res['version']} is available. See Settings.") if not auto else None
     elif not auto:
@@ -908,27 +911,52 @@ def on_check_updates(auto=False):
     return _update_html(res), gr.update(visible=res["state"] == "new"), _flag(res)
 
 
+def _remembered_update():
+    """Show the update the last check found (if it is still newer than this version), without a network call."""
+    v = get_setting("latest_known", "")
+    if v and updates.is_newer(v):
+        res = {"state": "new", "version": v, "url": updates.PAGE}
+        return _update_html(res), gr.update(visible=True), "1"
+    return gr.skip(), gr.skip(), ""
+
+
 def on_auto_update_check():
-    """Page load: at most once a day, and only if the user left automatic checks on."""
+    """App start: look for a newer version every time (a tiny request to GitHub), unless the user turned it off.
+    If GitHub can't be reached, keep showing an update that an earlier check already found."""
     if get_setting("auto_update", "1") != "1":
         return gr.skip(), gr.skip(), ""
-    try:
-        if time.time() - float(get_setting("last_update_check", "0")) < 86400:
-            return gr.skip(), gr.skip(), ""
-    except ValueError:
-        pass
-    return on_check_updates(auto=True)
+    res = updates.check()
+    if res["state"] == "offline":
+        return _remembered_update()
+    return on_check_updates(auto=True, res=res)
 
 
 def on_auto_update_setting(on):
     set_setting("auto_update", "1" if on else "0")
 
 
-def on_open_update():
+def on_open_update(go=""):
+    """Installed Windows copy: download the small setup file and run it silently over this install, then quit so
+    the setup can replace the files (it starts the app again when done). Anything else: open the download page."""
+    target = updates.install_dir()
+    if target is not None and go != "1":
+        return gr.skip()  # the user said no in the confirm box
+    if target is None:
+        try:
+            webbrowser.open(_UPD["url"])
+        except Exception:
+            pass
+        return gr.skip()
     try:
-        webbrowser.open(_UPD["url"])
-    except Exception:
-        pass
+        setup = updates.download_installer()
+        updates.run_installer(setup, target)
+    except RuntimeError as e:
+        return _msg("err", str(e))
+    except Exception as e:  # never leave the user with a half-started update
+        return _msg("err", f"Couldn't start the update: {e}")
+    if not os.environ.get("STEMSPLIT_UPDATE_DRYRUN"):
+        threading.Timer(2.0, lambda: os._exit(0)).start()  # the setup closes any leftovers too
+    return _msg("ok", "Updating. Un-Mix-a-Lot will close now. A small progress window shows the update, and the app opens again by itself when it is done.")
 
 
 def on_sam_check():
@@ -1100,10 +1128,11 @@ def build() -> gr.Blocks:
                             gr.HTML('<div class="sec">Updates</div>')
                             upd_html = gr.HTML(_update_html())
                             upd_flag = gr.Textbox("", visible=False)
-                            b_upd_get = gr.Button("Download the new version", size="sm", variant="primary", visible=False)
+                            upd_go = gr.Textbox("", visible=False)
+                            b_upd_get = gr.Button("Update now" if updates.can_self_update() else "Download the new version", size="sm", variant="primary", visible=False)
                             b_upd = gr.Button("Check for updates", size="sm")
                             auto_upd = gr.Checkbox(get_setting("auto_update", "1") == "1",
-                                                   label="Check automatically (once a day, contacts GitHub)")
+                                                   label="Check automatically when the app starts (contacts GitHub)")
                         gr.HTML('<div class="sec">Use at your own risk</div>'
                                 '<div style="font-size:12px;opacity:.65">Un-Mix-a-Lot is free software provided "as is", with no warranty. '
                                 'Always work on copies of your files. The author(s) are not responsible for lost or damaged files or other harm. '
@@ -1282,7 +1311,10 @@ def build() -> gr.Blocks:
                        "if (b) b.classList.toggle('has-update', !!f); }")
             b_upd.click(on_check_updates, None, [upd_html, b_upd_get, upd_flag], show_progress="hidden").then(
                 None, upd_flag, None, js=_DOT_JS)
-            b_upd_get.click(on_open_update, None, None, show_progress="hidden")
+            b_upd_get.click(on_open_update, upd_go, set_msg, show_progress="hidden",
+                            js=("() => [confirm('Update now?\\n\\nUn-Mix-a-Lot will close and a small progress window will show the update. The app opens again by itself in a minute or two. "
+                                "Anything running will be stopped, and your files and settings are kept.') ? '1' : '']")
+                            if updates.can_self_update() else "() => ['1']")
             auto_upd.change(on_auto_update_setting, auto_upd, None, show_progress="hidden")
             demo.load(on_auto_update_check, None, [upd_html, b_upd_get, upd_flag], show_progress="hidden").then(
                 None, upd_flag, None, js=_DOT_JS)
