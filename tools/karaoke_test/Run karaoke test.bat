@@ -12,6 +12,8 @@ if not exist ".venv\Scripts\python.exe" (
   "%UV%" pip install --python .venv\Scripts\python.exe torch==2.11.0 --index-url https://download.pytorch.org/whl/cu128 || (pause & exit /b 1)
   "%UV%" pip install --python .venv\Scripts\python.exe "audio-separator" || (pause & exit /b 1)
 )
+.venv\Scripts\python.exe -c "import onnxruntime" >nul 2>&1
+if errorlevel 1 "%UV%" pip install --python .venv\Scripts\python.exe onnxruntime
 .venv\Scripts\python.exe karaoke_test.py "%~1"
 echo.
 pause
