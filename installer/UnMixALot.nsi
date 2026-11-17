@@ -70,6 +70,9 @@ Function LogDone
 FunctionEnd
 
 Section "Install"
+  ; close a running copy first: its open files would otherwise block the update or leave a broken install
+  nsExec::Exec `powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process | Where-Object { $$_.ExecutablePath -like '$INSTDIR\*' } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue }"`
+  Sleep 1500
   SetOutPath "$INSTDIR"
   DetailPrint "Copying program files ..."
   File /r "stage\*.*"
@@ -113,6 +116,9 @@ Section "Install"
 SectionEnd
 
 Section "Uninstall"
+  ; close a running copy first: its open files would otherwise block the update or leave a broken install
+  nsExec::Exec `powershell -NoProfile -ExecutionPolicy Bypass -Command "Get-CimInstance Win32_Process | Where-Object { $$_.ExecutablePath -like '$INSTDIR\*' } | ForEach-Object { Stop-Process -Id $$_.ProcessId -Force -ErrorAction SilentlyContinue }"`
+  Sleep 1500
   DetailPrint "Removing program files (this takes a moment)..."
   ; one fast delete per big folder; deleting file by file is very slow for the Python libraries
   nsExec::Exec 'cmd /c rmdir /s /q "$INSTDIR\.venv"'

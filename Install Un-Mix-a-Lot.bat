@@ -9,7 +9,17 @@ if not exist ".tools\uv.exe" (
   powershell -NoProfile -ExecutionPolicy Bypass -Command "irm https://astral.sh/uv/install.ps1 | iex"
   if errorlevel 1 goto :fail
 )
-if not exist ".venv\Scripts\python.exe" (
+if not exist ".venv\Scripts\pythonw.exe" (
+  if exist ".venv" (
+    echo Cleaning up an unfinished Python folder ...
+    rmdir /s /q ".venv"
+    if exist ".venv" (
+      echo.
+      echo Could not remove the old .venv folder: Windows says some of its files are still in use.
+      echo Close Un-Mix-a-Lot, restart your PC if needed, delete the .venv folder, and run this again.
+      goto :fail
+    )
+  )
   echo Getting Python 3.12 ...
   ".tools\uv.exe" venv --seed --python 3.12 .venv
   if errorlevel 1 goto :fail
