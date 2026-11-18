@@ -25,7 +25,7 @@ MIXER_HTML = """
     <span class="sm-lbl" id="sm-vlbl">Voices</span>
     <select id="sm-nv" class="sm-sel" title="How many voices are in this recording"><option>2</option><option>3</option><option>4</option></select>
     <button id="sm-splitbtn" class="sm-btn2" data-sm="split" title="Find and separate the different voices" disabled>Split voices</button>
-    <button id="sm-backbtn" class="sm-btn2" data-sm="back" style="display:none" title="Try to take the backing vocals out of the music. Not always reliable: backing vocals are mixed into the music, so listen and check." disabled>Split backing vocals</button>
+    <button id="sm-backbtn" class="sm-btn2" data-sm="back" style="display:none" title="Try to take the backup vocals out of the music. Not always reliable: backup vocals are mixed into the music, so listen and check." disabled>Split backup vocals</button>
   </div>
   <div id="sm-rows"></div>
 </div>

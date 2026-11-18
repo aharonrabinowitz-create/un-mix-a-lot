@@ -518,11 +518,11 @@ def test_karaoke_stems_add_up(tmp_path):
     sd = tmp_path / "s"
     pipeline.save_session(st, sd, None, "song.mp3", dict(pipeline.KARAOKE_LABELS))
     man = json.loads((sd / "manifest.json").read_text())
-    assert [s["label"] for s in man["stems"]] == ["Lead vocal", "Music + backing vocals"]
+    assert [s["label"] for s in man["stems"]] == ["Lead vocal", "Music + backup vocals"]
     backing, music = karaoke.backing_split(pipeline.load_stems(sd)["music"], mock=True)
     man = pipeline.save_backing_split(sd, backing, music)
     assert [s["key"] for s in man["stems"]] == ["lead", "backing", "music"]
-    assert [s["label"] for s in man["stems"]] == ["Lead vocal", "Backing vocals", "Music"]
+    assert [s["label"] for s in man["stems"]] == ["Lead vocal", "Backup vocals", "Music"]
     back = pipeline.load_stems(sd)
     total = back["lead"] + back["backing"] + back["music"]
     assert np.allclose(total, wav, atol=1e-5)          # lead + backing + music = the original

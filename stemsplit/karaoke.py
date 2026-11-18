@@ -1,10 +1,10 @@
-"""Karaoke mode: take the lead vocal out of a song, and (optionally) take the backing vocals out too.
+"""Karaoke mode: take the lead vocal out of a song, and (optionally) take the backup vocals out too.
 
 Step 1 (default): a karaoke model separates the LEAD singer. What is left is the music with the
-backing vocals still in it. This is the most reliable split.
+backup vocals still in it. This is the most reliable split.
 
 Step 2 (optional button): a vocals-vs-music model runs on that leftover and removes the singing
-that is still in it. The backing vocals are whatever it took out (leftover minus music), so the
+that is still in it. The backup vocals are whatever it took out (leftover minus music), so the
 three tracks always add back up to the original: lead + backing + music.
 
 Both models are run with the audio-separator package. Models are downloaded by the user's own
@@ -129,7 +129,7 @@ def _run_model(model_file: str, wav: np.ndarray, progress: Progress, label: str)
 
 
 def lead_split(wav: np.ndarray, progress: Progress = None, *, mock: bool = False) -> dict[str, np.ndarray]:
-    """Lead vocal out. Returns {'lead': ..., 'music': ...} where music still holds the backing vocals."""
+    """Lead vocal out. Returns {'lead': ..., 'music': ...} where music still holds the backup vocals."""
     if mock:
         return {"lead": (wav * 0.5).astype(np.float32), "music": (wav * 0.5).astype(np.float32)}
     o = _run_model(LEAD_MODEL, wav, progress, LEAD_NAME)
@@ -140,7 +140,7 @@ def lead_split(wav: np.ndarray, progress: Progress = None, *, mock: bool = False
 
 def backing_split(music_with_backing: np.ndarray, progress: Progress = None, *,
                   mock: bool = False) -> tuple[np.ndarray, np.ndarray]:
-    """Singing out of the leftover. Returns (backing vocals, music only); they add up to the input."""
+    """Singing out of the leftover. Returns (backup vocals, music only); they add up to the input."""
     x = music_with_backing
     if mock:
         music = (x * 0.7).astype(np.float32)

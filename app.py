@@ -134,7 +134,7 @@ def run_engine(wav, engine, size, o, token, progress=None, cancelled=None):
     """Dispatch to the chosen engine, then optionally pull a 2nd voice out with SAM Audio."""
     if engine == ENGINE_SAM or ZERO:
         return run_model(wav, size, o, progress)
-    if engine == ENGINE_KARAOKE:  # lead vocal out; the music keeps the backing vocals
+    if engine == ENGINE_KARAOKE:  # lead vocal out; the music keeps the backup vocals
         if not MOCK:
             karaoke.ensure_packages(progress)
         return karaoke.lead_split(wav, progress, mock=MOCK)
@@ -644,13 +644,13 @@ def on_split_voices(cid, sid, n):
 
 
 def on_split_backing(cid, sid):
-    """Karaoke result: take the singing that is still in "Music + backing vocals" out of it."""
+    """Karaoke result: take the singing that is still in "Music + backup vocals" out of it."""
     sd = _session_dir(cid, sid)
-    _p(cid, "Preparing the backing-singer split…", 0.02)
+    _p(cid, "Preparing the backup-vocal split…", 0.02)
     try:
         man = json.loads((sd / "manifest.json").read_text())
         if (man.get("meta") or {}).get("backing_split"):
-            _fail(cid, "The backing vocals are already split out of this result.")
+            _fail(cid, "The backup vocals are already split out of this result.")
         if not MOCK:
             karaoke.ensure_packages(lambda f, t: _p(cid, t, None, phase="loading"))
         x = pipeline.load_stems(sd)["music"]
@@ -663,11 +663,11 @@ def on_split_backing(cid, sid):
     except karaoke.RestartNeeded as e:
         _fail(cid, str(e))
     except Exception as e:
-        _fail(cid, f"Backing-singer split failed: {e}")
+        _fail(cid, f"Backup-vocal split failed: {e}")
     _mirror_history(sd, sid)
     payload, _ = _payload(sd)
-    _p(cid, "Split out the backing vocals. Mute them to hear the music without singing. This isn't always reliable "
-            "because backing vocals are mixed into the music, so listen and check.", active=False, kind="ok")
+    _p(cid, "Split out the backup vocals. Mute them to hear the music without singing. This isn't always reliable "
+            "because backup vocals are mixed into the music, so listen and check.", active=False, kind="ok")
     return payload
 
 
@@ -1032,7 +1032,7 @@ DEFAULTS = dict(engine=ENGINES[0], size=MODELS[0], fast=True, p_v="speech", p_m=
 ENGINE_NOTES = {
     ENGINE_SAM: "Describe what to pull out (Settings, Model tab). Best for picking out a specific sound.",
     ENGINE_LOCAL: "Splits into dialogue, music and effects with no prompts. First use downloads about 450 MB.",
-    ENGINE_KARAOKE: "Takes the lead vocal out; the music keeps the backing vocals. After it runs, a Split backing vocals button "
+    ENGINE_KARAOKE: "Takes the lead vocal out; the music keeps the backup vocals. After it runs, a Split backup vocals button "
                     "can try to take them out too (not always reliable). **Experimental.** First use installs some tools and "
                     "downloads about 2 GB of models, and works best with an NVIDIA GPU.",
     ENGINE_CLOUD: "Best quality, runs on mvsep.com. **Your audio is uploaded there.** Needs your MVSEP token (Settings, Model tab).",
