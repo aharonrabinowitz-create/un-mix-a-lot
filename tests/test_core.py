@@ -507,3 +507,38 @@ def test_download_rejects_bad_file(monkeypatch, tmp_path):
     monkeypatch.setenv("STEMSPLIT_UPDATE_URL", good.as_uri())
     p = updates.download_installer()
     assert p.is_file() and p.stat().st_size == 200_002
+
+
+def test_karaoke_stems_add_up(tmp_path):
+    from stemsplit import karaoke
+    rng = np.random.default_rng(1)
+    wav = rng.standard_normal(SR * 2).astype(np.float32) * 0.1
+    st = karaoke.lead_split(wav, mock=True)
+    assert set(st) == {"lead", "music"}
+    sd = tmp_path / "s"
+    pipeline.save_session(st, sd, None, "song.mp3", dict(pipeline.KARAOKE_LABELS))
+    man = json.loads((sd / "manifest.json").read_text())
+    assert [s["label"] for s in man["stems"]] == ["Lead singer", "Music + backing singers"]
+    backing, music = karaoke.backing_split(pipeline.load_stems(sd)["music"], mock=True)
+    man = pipeline.save_backing_split(sd, backing, music)
+    assert [s["key"] for s in man["stems"]] == ["lead", "backing", "music"]
+    assert [s["label"] for s in man["stems"]] == ["Lead singer", "Backing singers", "Music"]
+    back = pipeline.load_stems(sd)
+    total = back["lead"] + back["backing"] + back["music"]
+    assert np.allclose(total, wav, atol=1e-5)          # lead + backing + music = the original
+    assert man["meta"]["backing_split"] is True
+    assert (sd / "backing.preview.mp3").exists() or (sd / "backing.preview.wav").exists()
+
+
+def test_karaoke_export_music_only(tmp_path):
+    from stemsplit import karaoke
+    rng = np.random.default_rng(2)
+    wav = rng.standard_normal(SR * 2).astype(np.float32) * 0.1
+    sd = tmp_path / "s"
+    pipeline.save_session(karaoke.lead_split(wav, mock=True), sd, None, "song.mp3", dict(pipeline.KARAOKE_LABELS))
+    backing, music = karaoke.backing_split(pipeline.load_stems(sd)["music"], mock=True)
+    pipeline.save_backing_split(sd, backing, music)
+    out = pipeline.export(sd, {"music": 1.0, "lead": 0.0, "backing": 0.0}, "wav", as_video=False, out_dir=tmp_path / "o")
+    got = audio.decode_mono(out)
+    n = min(len(got), len(music))
+    assert np.corrcoef(got[:n], music[:n])[0, 1] > 0.99      # singing muted = just the music

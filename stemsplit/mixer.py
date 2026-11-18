@@ -22,9 +22,10 @@ MIXER_HTML = """
     <button id="sm-redobtn" class="sm-btn2" data-sm="redo" title="Redo (Ctrl+Shift+Z or Ctrl+Y, or Cmd+Shift+Z on a Mac)" disabled>&#8631;</button>
     <span class="sm-sp"></span>
     <button id="sm-cmpbtn" class="sm-btn2" data-sm="cmp" style="display:none" title="Hear the original, untouched audio to compare with the separated tracks">Original</button>
-    <span class="sm-lbl">Voices</span>
+    <span class="sm-lbl" id="sm-vlbl">Voices</span>
     <select id="sm-nv" class="sm-sel" title="How many voices are in this recording"><option>2</option><option>3</option><option>4</option></select>
     <button id="sm-splitbtn" class="sm-btn2" data-sm="split" title="Find and separate the different voices" disabled>Split voices</button>
+    <button id="sm-backbtn" class="sm-btn2" data-sm="back" style="display:none" title="Try to take the backing singers out of the music. Not always reliable: backing singers are mixed into the music, so listen and check." disabled>Split backing singers</button>
   </div>
   <div id="sm-rows"></div>
 </div>
@@ -181,7 +182,7 @@ MIXER_CSS = """
 MIXER_JS = r"""
 (function () {
   if (window.somaMixer) return;
-  const COLORS = {voices:'#3b82f6', voices2:'#22c55e', voices3:'#06b6d4', voices4:'#ec4899', music:'#a855f7', effects:'#f59e0b', other:'#94a3b8', original:'#9ca3af'};
+  const COLORS = {voices:'#3b82f6', voices2:'#22c55e', voices3:'#06b6d4', voices4:'#ec4899', lead:'#ef4444', backing:'#14b8a6', music:'#a855f7', effects:'#f59e0b', other:'#94a3b8', original:'#9ca3af'};
   const DEFAULT = [['voices','Voices'],['music','Music'],['effects','Effects']];
   let ctx = null, stems = [], st = {}, srcs = [], playing = false, t0 = 0, off = 0, dur = 0;
   let raf = 0, token = 0, hasVideo = false, keepOff = null;
@@ -790,7 +791,9 @@ MIXER_JS = r"""
     const root = $('sm-root'); if (root) root.classList.add('empty');
     vid().style.display = 'none'; vid().removeAttribute('src');
     const ph = $('sm-vph'); if (ph) { ph.textContent = 'Video preview appears here'; ph.style.display = ''; }
-    ['sm-playbtn', 'sm-startbtn', 'sm-splitbtn'].forEach((i) => { const e = $(i); if (e) e.disabled = true; });
+    ['sm-playbtn', 'sm-startbtn', 'sm-splitbtn', 'sm-backbtn'].forEach((i) => { const e = $(i); if (e) e.disabled = true; });
+    ['sm-vlbl', 'sm-nv', 'sm-splitbtn'].forEach((i) => { const e = $(i); if (e) e.style.display = ''; });
+    { const e = $('sm-backbtn'); if (e) e.style.display = 'none'; }
     const cb = $('sm-cmpbtn'); if (cb) { cb.style.display = 'none'; cb.classList.remove('on'); }
     paintTime(); drawMeter();
   }
@@ -836,6 +839,9 @@ MIXER_JS = r"""
         st[s.key] = o ? {mute: !!o.mute, solo: !!o.solo, vol: o.vol} : {mute: !!s.silent, solo: false, vol: 1};
       });
       ghost = stems.some((s) => s.ghost); cmp = false;
+      const kar = stems.some((s) => s.key === 'lead'), hasB = stems.some((s) => s.key === 'backing');   // a karaoke result: no voice tools, but a backing-singer split
+      ['sm-vlbl', 'sm-nv', 'sm-splitbtn'].forEach((i) => { const e = $(i); if (e) e.style.display = kar ? 'none' : ''; });
+      { const e = $('sm-backbtn'); if (e) e.style.display = (kar && !hasB) ? '' : 'none'; }
       const cb = $('sm-cmpbtn'); if (cb) { cb.style.display = ghost ? '' : 'none'; cb.classList.remove('on'); }
       fxs = m.fx || {}; fxStash = {}; closePop();
       dur = Math.max.apply(null, stems.map((s) => s.buf.duration));
@@ -861,7 +867,7 @@ MIXER_JS = r"""
         rows.prepend(w); renderWho();
       }
       addRuler(rows);
-      $('sm-playbtn').disabled = false; $('sm-startbtn').disabled = false; $('sm-splitbtn').disabled = !!m.preview;
+      $('sm-playbtn').disabled = false; $('sm-startbtn').disabled = false; $('sm-splitbtn').disabled = !!m.preview; { const e = $('sm-backbtn'); if (e) e.disabled = !!m.preview; }
       refresh(); paintTime(); meterLoop();
     } catch (e) {
       rows.innerHTML = '<div style="padding:8px;color:#f87171">Could not load stems: ' + e.message + '</div>';
@@ -883,6 +889,7 @@ MIXER_JS = r"""
     else if (a === 'zfit') { lastUV = performance.now(); setView(0, dur); }
     else if (a === 'cmp') setCompare(!cmp);
     else if (a === 'split') { const b = $('split-btn'); if (b) b.click(); }
+    else if (a === 'back') { const b = $('back-btn'); if (b) b.click(); }
     else if (a === 'fx') openPop('fx', k, t);
     else if (a === 'preset') applyPreset(t.dataset.p);
     else if (a === 'wave') seek(Tx(e, t));

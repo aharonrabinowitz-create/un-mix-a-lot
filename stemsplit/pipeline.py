@@ -14,9 +14,11 @@ from .chunking import crossfade_add, plan_chunks
 from .separator import Separator
 
 VOICE_KEYS = ["voices", "voices2", "voices3", "voices4"]
-STEMS = VOICE_KEYS + ["music", "effects", "other"]
+STEMS = VOICE_KEYS + ["lead", "backing", "music", "effects", "other"]
 LABELS = {"voices": "Voices", "voices2": "Voice 2", "voices3": "Voice 3", "voices4": "Voice 4",
+          "lead": "Lead singer", "backing": "Backing singers",
           "music": "Music", "effects": "Effects", "other": "Other"}
+KARAOKE_LABELS = dict(LABELS, music="Music + backing singers")  # before the backing singers are split out
 DEFAULT_PROMPTS = {"voices": "speech", "voices2": "", "music": "music", "effects": "sound effects"}
 
 
@@ -179,6 +181,35 @@ def save_voice_split(session_dir: Path, tracks: list[np.ndarray], segments: list
         entries[k] = {"key": k, "label": label, "preview": preview.name, "silent": False}
     man["stems"] = [entries.get(k) or keep[k] for k in STEMS if k in entries or k in keep]
     man.setdefault("meta", {})["voice_split"] = {"voices": len(live), "segments": segments}
+    mf.write_text(json.dumps(man))
+    return man
+
+
+def _write_stem(session_dir: Path, k: str, t: np.ndarray) -> str:
+    """Save one full-quality stem plus its browser preview; returns the preview file name."""
+    np.save(session_dir / f"{k}.npy", t)
+    for f in session_dir.glob(f"{k}.preview.*"):
+        f.unlink()
+    preview = session_dir / f"{k}.preview.mp3"
+    try:
+        audio.write_audio(preview, t, audio.SR, bitrate="160k")
+    except Exception:
+        preview = session_dir / f"{k}.preview.wav"
+        audio.write_audio(preview, t)
+    return preview.name
+
+
+def save_backing_split(session_dir: Path, backing: np.ndarray, music: np.ndarray) -> dict:
+    """Karaoke result: replace 'Music + backing singers' by 'Music' and a new 'Backing singers' track."""
+    mf = session_dir / "manifest.json"
+    man = json.loads(mf.read_text())
+    entries = {x["key"]: x for x in man["stems"]}
+    entries["music"] = {"key": "music", "label": LABELS["music"], "preview": _write_stem(session_dir, "music", music),
+                        "silent": False}
+    entries["backing"] = {"key": "backing", "label": LABELS["backing"],
+                          "preview": _write_stem(session_dir, "backing", backing), "silent": False}
+    man["stems"] = [entries[k] for k in STEMS if k in entries]
+    man.setdefault("meta", {})["backing_split"] = True
     mf.write_text(json.dumps(man))
     return man
 

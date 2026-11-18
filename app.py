@@ -30,7 +30,7 @@ from urllib.parse import quote
 
 import gradio as gr
 
-from stemsplit import __version__, audio, claude_config, cinematic, fx as fxmod, hardware, hfaccess, mvsep, pipeline, updates, voices
+from stemsplit import __version__, audio, claude_config, cinematic, fx as fxmod, hardware, hfaccess, karaoke, mvsep, pipeline, updates, voices
 from stemsplit.fxjs import FX_JS
 from stemsplit.mixer import MIXER_CSS, MIXER_HTML, MIXER_JS
 from stemsplit.separator import MODEL_IDS, get_separator
@@ -111,10 +111,11 @@ ENGINE_SAM = "SAM Audio (Local)"
 ENGINE_LOCAL = "BandIt v2 (Local)"
 ENGINE_CLOUD = "DnR v3 (Cloud, MVSEP)"
 ENGINE_CLOUD2 = "BandIt v2 (Cloud, MVSEP)"
+ENGINE_KARAOKE = "Karaoke (Local, experimental)"
 CLOUD_ENGINES = {ENGINE_CLOUD: "dnr", ENGINE_CLOUD2: "bandit"}
 HW = hardware.detect()
 SAM_OK = ZERO or MOCK or HW["sam_ok"]
-ENGINES = [ENGINE_SAM] if ZERO else [ENGINE_LOCAL, ENGINE_CLOUD2, ENGINE_CLOUD] + ([ENGINE_SAM] if SAM_OK else [])
+ENGINES = [ENGINE_SAM] if ZERO else [ENGINE_LOCAL, ENGINE_KARAOKE, ENGINE_CLOUD2, ENGINE_CLOUD] + ([ENGINE_SAM] if SAM_OK else [])
 _cin: dict = {}
 
 
@@ -133,6 +134,10 @@ def run_engine(wav, engine, size, o, token, progress=None, cancelled=None):
     """Dispatch to the chosen engine, then optionally pull a 2nd voice out with SAM Audio."""
     if engine == ENGINE_SAM or ZERO:
         return run_model(wav, size, o, progress)
+    if engine == ENGINE_KARAOKE:  # lead singer out; the music keeps the backing singers
+        if not MOCK:
+            karaoke.ensure_packages(progress)
+        return karaoke.lead_split(wav, progress, mock=MOCK)
     if engine == ENGINE_LOCAL:
         stems = _cinematic_model(progress).separate(wav, progress)
     else:
@@ -550,8 +555,9 @@ def on_separate(cid, file, engine, size, fast, chunk_s, overlap_s, p_voices, p_m
     if audio.has_video(path):  # keep our own copy; Gradio's upload cache may be cleaned
         src_video = str(shutil.copy(path, sd / ("source" + Path(path).suffix)))
     used = {ENGINE_SAM: f"SAM Audio ({size})", ENGINE_LOCAL: "BandIt v2", ENGINE_CLOUD: "MVSEP DnR v3",
-            ENGINE_CLOUD2: "MVSEP BandIt v2"}[engine]
-    pipeline.save_session(stems, sd, src_video, Path(path).name, dict(pipeline.LABELS),
+            ENGINE_CLOUD2: "MVSEP BandIt v2", ENGINE_KARAOKE: "Karaoke (becruily)"}[engine]
+    pipeline.save_session(stems, sd, src_video, Path(path).name,
+                          dict(pipeline.KARAOKE_LABELS if engine == ENGINE_KARAOKE else pipeline.LABELS),
                           {"engine": used, "created": time.time(), "name": Path(path).name})
     try:  # keep the untouched original so it can be played back for comparison
         orig = _write_preview(wav, sd)
@@ -632,6 +638,32 @@ def on_split_voices(cid, sid, n):
         _p(cid, "Only one voice was found, so nothing was split.", active=False, kind="info")
     else:
         _p(cid, f"Split the voices into {found} tracks. Listen, and mute or solo each one.", active=False, kind="ok")
+    return payload
+
+
+def on_split_backing(cid, sid):
+    """Karaoke result: take the singing that is still in "Music + backing singers" out of it."""
+    sd = _session_dir(cid, sid)
+    _p(cid, "Preparing the backing-singer split…", 0.02)
+    try:
+        man = json.loads((sd / "manifest.json").read_text())
+        if (man.get("meta") or {}).get("backing_split"):
+            _fail(cid, "The backing singers are already split out of this result.")
+        if not MOCK:
+            karaoke.ensure_packages(lambda f, t: _p(cid, t, None, phase="loading"))
+        x = pipeline.load_stems(sd)["music"]
+        if float(abs(x).max()) < 1e-4:
+            _fail(cid, "There is no music track in this result to split.")
+        backing, music = karaoke.backing_split(x, lambda f, t: _p(cid, t, 0.05 + 0.9 * f), mock=MOCK)
+        pipeline.save_backing_split(sd, backing, music)
+    except gr.Error:
+        raise
+    except Exception as e:
+        _fail(cid, f"Backing-singer split failed: {e}")
+    _mirror_history(sd, sid)
+    payload, _ = _payload(sd)
+    _p(cid, "Split out the backing singers. Mute them to hear the music without singing. This isn't always reliable "
+            "because backing singers are mixed into the music, so listen and check.", active=False, kind="ok")
     return payload
 
 
@@ -996,6 +1028,9 @@ DEFAULTS = dict(engine=ENGINES[0], size=MODELS[0], fast=True, p_v="speech", p_m=
 ENGINE_NOTES = {
     ENGINE_SAM: "Describe what to pull out (Settings, Model tab). Best for picking out a specific sound.",
     ENGINE_LOCAL: "Splits into dialogue, music and effects with no prompts. First use downloads about 450 MB.",
+    ENGINE_KARAOKE: "Takes the lead singer out; the music keeps the backing singers. After it runs, a Split backing singers button "
+                    "can try to take them out too (not always reliable). **Experimental.** First use installs some tools and "
+                    "downloads about 2 GB of models, and works best with an NVIDIA GPU.",
     ENGINE_CLOUD: "Best quality, runs on mvsep.com. **Your audio is uploaded there.** Needs your MVSEP token (Settings, Model tab).",
     ENGINE_CLOUD2: "The same BandIt v2 model as on this PC, but run on mvsep.com. **Your audio is uploaded there.** Needs your MVSEP token (Settings, Model tab).",
 }
@@ -1236,6 +1271,7 @@ def build() -> gr.Blocks:
         seg_box = gr.Textbox(visible=False)
         b_split = gr.Button("split", elem_id="split-btn", elem_classes=["hid"])
         b_edit = gr.Button("edit", elem_id="edit-btn", elem_classes=["hid"])
+        b_back = gr.Button("back", elem_id="back-btn", elem_classes=["hid"])
         fx_box = gr.Textbox(visible=False)
         b_fx = gr.Button("fx", elem_id="fx-btn", elem_classes=["hid"])
 
@@ -1262,6 +1298,8 @@ def build() -> gr.Blocks:
                       show_progress="hidden",
                       js="(c, s, n) => [c, s, document.getElementById('sm-nv').value]").success(
             None, [manifest], None, js=LOAD_JS)
+        b_back.click(on_split_backing, [cid, sid], manifest, concurrency_limit=1, concurrency_id="split",
+                     show_progress="hidden").success(None, [manifest], None, js=LOAD_JS)
         b_edit.click(on_edit_voices, [cid, sid, seg_box], manifest, concurrency_limit=1, concurrency_id="split",
                      show_progress="hidden",
                      js="(c, s, x) => [c, s, window.somaMixer.segments()]").success(None, [manifest], None, js=LOAD_JS)
@@ -1296,7 +1334,7 @@ def build() -> gr.Blocks:
         # --- which controls show depends on the engine
         def _vis(e):
             return (gr.update(visible=e == ENGINE_SAM), gr.update(visible=e == ENGINE_SAM),
-                    gr.update(visible=e in CLOUD_ENGINES), gr.update(visible=e == ENGINE_LOCAL), ENGINE_NOTES[e])
+                    gr.update(visible=e in CLOUD_ENGINES), gr.update(visible=e in (ENGINE_LOCAL, ENGINE_KARAOKE)), ENGINE_NOTES[e])
         engine.change(_vis, engine, [sam_row, grp_sam, grp_cloud, grp_none, note], show_progress="hidden", queue=False)
 
         if not ZERO:
