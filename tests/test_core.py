@@ -542,3 +542,16 @@ def test_karaoke_export_music_only(tmp_path):
     got = audio.decode_mono(out)
     n = min(len(got), len(music))
     assert np.corrcoef(got[:n], music[:n])[0, 1] > 0.99      # singing muted = just the music
+
+
+def test_karaoke_install_asks_for_restart(monkeypatch):
+    from stemsplit import karaoke
+    import subprocess
+
+    class P:
+        returncode = 0
+        stdout = b""
+    monkeypatch.setattr(karaoke, "available", lambda: False)
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: P())
+    with pytest.raises(karaoke.RestartNeeded):
+        karaoke.ensure_packages()

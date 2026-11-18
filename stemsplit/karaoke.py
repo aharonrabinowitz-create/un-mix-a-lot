@@ -33,6 +33,10 @@ LEAD_NAME, BACKING_NAME = "becruily's karaoke model", "Kimberley Jensen's vocal 
 Progress = Callable[[float, str], None] | None
 
 
+class RestartNeeded(RuntimeError):
+    """The helper packages were just installed; the app must be restarted before they can be used."""
+
+
 def model_dir() -> Path:
     d = Path(os.environ.get("STEMSPLIT_CACHE", Path.home() / ".cache" / "stemsplit")) / "karaoke"
     d.mkdir(parents=True, exist_ok=True)
@@ -59,8 +63,9 @@ def ensure_packages(progress: Progress = None):
         tail = p.stdout.decode(errors="replace").strip().splitlines()[-3:]
         raise RuntimeError("Couldn't install the karaoke tools: " + " | ".join(tail))
     importlib.invalidate_caches()
-    if not available():
-        raise RuntimeError("The karaoke tools were installed but can't be loaded. Restart the app and try again.")
+    # Installing replaces libraries (numpy, for one) that this running app has already loaded, so it must restart.
+    raise RestartNeeded("The karaoke tools are installed. Close Un-Mix-a-Lot and open it again, then run Karaoke again. "
+                        "(This restart is only needed one time.)")
 
 
 def _fit(x: np.ndarray, n: int) -> np.ndarray:

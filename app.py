@@ -115,7 +115,7 @@ ENGINE_KARAOKE = "Karaoke (Local, experimental)"
 CLOUD_ENGINES = {ENGINE_CLOUD: "dnr", ENGINE_CLOUD2: "bandit"}
 HW = hardware.detect()
 SAM_OK = ZERO or MOCK or HW["sam_ok"]
-ENGINES = [ENGINE_SAM] if ZERO else [ENGINE_LOCAL, ENGINE_KARAOKE, ENGINE_CLOUD2, ENGINE_CLOUD] + ([ENGINE_SAM] if SAM_OK else [])
+ENGINES = [ENGINE_SAM] if ZERO else [ENGINE_LOCAL, ENGINE_CLOUD2, ENGINE_CLOUD] + ([ENGINE_SAM] if SAM_OK else []) + [ENGINE_KARAOKE]
 _cin: dict = {}
 
 
@@ -542,6 +542,8 @@ def on_separate(cid, file, engine, size, fast, chunk_s, overlap_s, p_voices, p_m
         _p(cid, str(e) or "Cancelled.", active=False)
         gr.Info(str(e) or "Cancelled.")
         return gr.skip(), gr.skip(), gr.skip()
+    except karaoke.RestartNeeded as e:
+        _fail(cid, str(e))
     except Exception as e:
         if engine == ENGINE_SAM and not ZERO and hfaccess.is_access_error(e):
             _fail(cid, "Meta hasn't approved your access to this SAM Audio model yet. "
@@ -658,6 +660,8 @@ def on_split_backing(cid, sid):
         pipeline.save_backing_split(sd, backing, music)
     except gr.Error:
         raise
+    except karaoke.RestartNeeded as e:
+        _fail(cid, str(e))
     except Exception as e:
         _fail(cid, f"Backing-singer split failed: {e}")
     _mirror_history(sd, sid)
