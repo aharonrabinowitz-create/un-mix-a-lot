@@ -1,10 +1,10 @@
-"""Karaoke mode: take the lead singer out of a song, and (optionally) take the backing singers out too.
+"""Karaoke mode: take the lead vocal out of a song, and (optionally) take the backing vocals out too.
 
 Step 1 (default): a karaoke model separates the LEAD singer. What is left is the music with the
-backing singers still in it. This is the most reliable split.
+backing vocals still in it. This is the most reliable split.
 
 Step 2 (optional button): a vocals-vs-music model runs on that leftover and removes the singing
-that is still in it. The backing singers are whatever it took out (leftover minus music), so the
+that is still in it. The backing vocals are whatever it took out (leftover minus music), so the
 three tracks always add back up to the original: lead + backing + music.
 
 Both models are run with the audio-separator package. Models are downloaded by the user's own
@@ -12,6 +12,7 @@ computer the first time they are used (they are NOT bundled with the app).
 """
 from __future__ import annotations
 
+import contextlib
 import importlib.util
 import logging
 import os
@@ -26,7 +27,7 @@ import numpy as np
 from . import audio
 
 PACKAGES = ["audio-separator", "onnxruntime", "audioread"]
-LEAD_MODEL = "mel_band_roformer_karaoke_becruily.ckpt"      # lead singer vs everything else
+LEAD_MODEL = "mel_band_roformer_karaoke_becruily.ckpt"      # lead vocal vs everything else
 BACKING_MODEL = "vocals_mel_band_roformer.ckpt"             # Kim vocals model: singing vs music
 LEAD_NAME, BACKING_NAME = "becruily's karaoke model", "Kimberley Jensen's vocal model"
 
@@ -68,6 +69,26 @@ def ensure_packages(progress: Progress = None):
                         "(This restart is only needed one time.)")
 
 
+@contextlib.contextmanager
+def _no_console_windows():
+    """The app runs without a console (pythonw), so every helper program the separation library starts
+    (ffmpeg, nvidia-smi) would flash a black window on Windows. Start them all without a window."""
+    if sys.platform != "win32":
+        yield
+        return
+    orig = subprocess.Popen.__init__
+
+    def init(self, *a, **kw):
+        kw["creationflags"] = kw.get("creationflags", 0) | subprocess.CREATE_NO_WINDOW
+        orig(self, *a, **kw)
+
+    subprocess.Popen.__init__ = init
+    try:
+        yield
+    finally:
+        subprocess.Popen.__init__ = orig
+
+
 def _fit(x: np.ndarray, n: int) -> np.ndarray:
     x = np.asarray(x, dtype=np.float32)
     if len(x) >= n:
@@ -79,7 +100,7 @@ def _run_model(model_file: str, wav: np.ndarray, progress: Progress, label: str)
     """Run one audio-separator model on mono audio. Returns {'vocals': ..., 'rest': ...} at the app's rate."""
     from audio_separator.separator import Separator  # imported late: heavy, and only installed on first use
 
-    with tempfile.TemporaryDirectory() as td:
+    with _no_console_windows(), tempfile.TemporaryDirectory() as td:
         src = Path(td) / "in.wav"
         audio.write_audio(src, wav)
         if progress:
@@ -108,7 +129,7 @@ def _run_model(model_file: str, wav: np.ndarray, progress: Progress, label: str)
 
 
 def lead_split(wav: np.ndarray, progress: Progress = None, *, mock: bool = False) -> dict[str, np.ndarray]:
-    """Lead singer out. Returns {'lead': ..., 'music': ...} where music still holds the backing singers."""
+    """Lead vocal out. Returns {'lead': ..., 'music': ...} where music still holds the backing vocals."""
     if mock:
         return {"lead": (wav * 0.5).astype(np.float32), "music": (wav * 0.5).astype(np.float32)}
     o = _run_model(LEAD_MODEL, wav, progress, LEAD_NAME)
@@ -119,7 +140,7 @@ def lead_split(wav: np.ndarray, progress: Progress = None, *, mock: bool = False
 
 def backing_split(music_with_backing: np.ndarray, progress: Progress = None, *,
                   mock: bool = False) -> tuple[np.ndarray, np.ndarray]:
-    """Singing out of the leftover. Returns (backing singers, music only); they add up to the input."""
+    """Singing out of the leftover. Returns (backing vocals, music only); they add up to the input."""
     x = music_with_backing
     if mock:
         music = (x * 0.7).astype(np.float32)

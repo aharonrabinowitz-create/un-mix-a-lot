@@ -16,9 +16,9 @@ from .separator import Separator
 VOICE_KEYS = ["voices", "voices2", "voices3", "voices4"]
 STEMS = VOICE_KEYS + ["lead", "backing", "music", "effects", "other"]
 LABELS = {"voices": "Voices", "voices2": "Voice 2", "voices3": "Voice 3", "voices4": "Voice 4",
-          "lead": "Lead singer", "backing": "Backing singers",
+          "lead": "Lead vocal", "backing": "Backing vocals",
           "music": "Music", "effects": "Effects", "other": "Other"}
-KARAOKE_LABELS = dict(LABELS, music="Music + backing singers")  # before the backing singers are split out
+KARAOKE_LABELS = dict(LABELS, music="Music + backing vocals")  # before the backing vocals are split out
 DEFAULT_PROMPTS = {"voices": "speech", "voices2": "", "music": "music", "effects": "sound effects"}
 
 
@@ -200,7 +200,7 @@ def _write_stem(session_dir: Path, k: str, t: np.ndarray) -> str:
 
 
 def save_backing_split(session_dir: Path, backing: np.ndarray, music: np.ndarray) -> dict:
-    """Karaoke result: replace 'Music + backing singers' by 'Music' and a new 'Backing singers' track."""
+    """Karaoke result: replace 'Music + backing vocals' by 'Music' and a new 'Backing vocals' track."""
     mf = session_dir / "manifest.json"
     man = json.loads(mf.read_text())
     entries = {x["key"]: x for x in man["stems"]}

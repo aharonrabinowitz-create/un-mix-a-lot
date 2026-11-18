@@ -518,11 +518,11 @@ def test_karaoke_stems_add_up(tmp_path):
     sd = tmp_path / "s"
     pipeline.save_session(st, sd, None, "song.mp3", dict(pipeline.KARAOKE_LABELS))
     man = json.loads((sd / "manifest.json").read_text())
-    assert [s["label"] for s in man["stems"]] == ["Lead singer", "Music + backing singers"]
+    assert [s["label"] for s in man["stems"]] == ["Lead vocal", "Music + backing vocals"]
     backing, music = karaoke.backing_split(pipeline.load_stems(sd)["music"], mock=True)
     man = pipeline.save_backing_split(sd, backing, music)
     assert [s["key"] for s in man["stems"]] == ["lead", "backing", "music"]
-    assert [s["label"] for s in man["stems"]] == ["Lead singer", "Backing singers", "Music"]
+    assert [s["label"] for s in man["stems"]] == ["Lead vocal", "Backing vocals", "Music"]
     back = pipeline.load_stems(sd)
     total = back["lead"] + back["backing"] + back["music"]
     assert np.allclose(total, wav, atol=1e-5)          # lead + backing + music = the original
@@ -555,3 +555,12 @@ def test_karaoke_install_asks_for_restart(monkeypatch):
     monkeypatch.setattr(subprocess, "run", lambda *a, **k: P())
     with pytest.raises(karaoke.RestartNeeded):
         karaoke.ensure_packages()
+
+
+def test_karaoke_no_console_helper_is_harmless():
+    from stemsplit import karaoke
+    import subprocess
+    orig = subprocess.Popen.__init__
+    with karaoke._no_console_windows():
+        r = subprocess.run(["echo", "hi"], capture_output=True)
+    assert r.returncode == 0 and subprocess.Popen.__init__ is orig
